@@ -1,11 +1,10 @@
 from pathlib import Path
 import cv2
 import numpy as np
-# import matplotlib.pyplot as plt
-# from PIL import Image
+import matplotlib.pyplot as plt
+from PIL import Image
 from pathlib import Path
 import re
-from concurrent.futures import ThreadPoolExecutor
 
 def beamDetect(image):
     # 讀取圖片
@@ -18,9 +17,9 @@ def beamDetect(image):
     hsv = cv2.cvtColor(image, cv2.COLOR_BGR2HSV)
 
     # 定義紅色範圍 (紅色分布在兩個區間：低與高 hue)
-    lower_red1 = np.array([0, 50, 50])
+    lower_red1 = np.array([0, 20, 30])
     upper_red1 = np.array([10, 255, 255])
-    lower_red2 = np.array([150, 50, 50])
+    lower_red2 = np.array([150, 20, 30])
     upper_red2 = np.array([180, 255, 255])
 
     # lower_red1 = np.array([0, 15, 15])
@@ -54,13 +53,10 @@ def beamDetect(image):
     # cv2.destroyAllWindows()
     return eroded
 
-def beamSimilarity(args): # img1, img2, r2　
+def beamSimilarity(img1, img2, r2):
     # image1, r1 = IOU(img1) # r1 : 143
     # image2, r2 = IOU(img2) # r2 : 144 
-    img1, img2, r2 = args[0], args[1], args[2]
-    # cv2.imshow('beam2', img2)
-    # cv2.waitKey(0)
-    # cv2.destroyAllWindows()
+
     image1 = cv2.imread(str(img1))
     # r1 = 162
     match = re.search(r'R(\d+)', str(img1))
@@ -72,7 +68,7 @@ def beamSimilarity(args): # img1, img2, r2　
     image2 = img2 
 
 
-    # 修正圖片大小不一問題
+    # 靽格迤??憭批?銝???
     img1SizeHeight, img1SizeWIdth = image1.shape[:2]
     img2SizeHeight, img2SizeWIdth = image2.shape[:2]
 
@@ -109,42 +105,39 @@ def beamSimilarity(args): # img1, img2, r2　
     # cv2.imshow("beam2", beam2)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
-    # print(f"IoU 相似度：{similarity:.4f}")
-    return (str(img1), similarity)
+    # print(f"IoU ?訾撮摨佗?{similarity:.4f}")
+    return similarity
 
 def IOU(img):
-    # 1. 读取图像
+    # 1. 霂餃??曉?
     img = cv2.imread(img)
     output = img.copy()
 
-    # 2. 转为灰阶并模糊（降低噪声）
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    # 2. 頧砌蛹?圈撟嗆芋蝟????芸ㄟ嚗?    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     gray = cv2.GaussianBlur(gray, (9, 9), 2)
 
-    # 3. 霍夫圆检测
-    circles = cv2.HoughCircles(gray, 
+    # 3. ?井??瘚?    circles = cv2.HoughCircles(gray, 
                             cv2.HOUGH_GRADIENT, 
                             dp=1.2, 
                             minDist=1000,
                             param1=100, 
                             param2=30, 
-                            minRadius=200, #100
-                            maxRadius=300) #160
+                            minRadius=100, 
+                            maxRadius=160)
 
-    # 4. 若有找到圆
-    if circles is not None:
+    # 4. ?交??曉??    if circles is not None:
         circles = np.uint16(np.around(circles))
         for i in circles[0, :]:
             x, y, r = i[0], i[1], i[2]
             
-            # 绘制圆与圆心
+            # 蝏????
             # cv2.circle(output, (x, y), r, (0, 255, 0), 2)
             #cv2.circle(output, (x, y), 2, (0, 0, 255), 3) # [x-r, x+r] [y-r, y+r]
     else:
-        print("未找到圆形")
+        print("?芣?啣?敶?)
     # print('x: ', x)
     # print('y: ', y)
-    cropped = output[y-r : y+r, x-r: x+r]  # 注意：順序是 [y1:y2, x1:x2]
+    cropped = output[y-r : y+r, x-r: x+r]  # 瘜冽?嚗?摨 [y1:y2, x1:x2]
 
     # cv2.imshow("Detected Circles", output)
     # cv2.imshow("cropped", cropped)
@@ -154,38 +147,30 @@ def IOU(img):
 
     return cropped, r
 
-def similarityMax(compared):
-    folder_path = "C:/Users/samuel901213/Downloads/beam/render_10degreeTrim_accelerate"
+def similarityMax(folder_path, compared):
+    
     folder = Path(folder_path)
 
-    paths = list(folder.glob("*.png"))
-
+    similarityMax = 0
     comparedImg, r = IOU(compared) # r2 : 144 
     beamCompared = beamDetect(comparedImg)
-    cv2.imshow('beamCompared', beamCompared)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    with ThreadPoolExecutor() as executor:
-        results = executor.map(beamSimilarity, [(p, beamCompared, r) for p in paths])
-    best_path, best_score = max(results, key=lambda x: x[1])
-    print('best score', best_score)
-    # for img_path in folder.glob('*.png'):
-    #     similarity = beamSimilarity(img_path, beamCompared, r)
-    #     if(similarity > 0.95):
-    #        similarityMax = similarity
-    #        theMostLike = cv2.imread(img_path) 
-    #        theMostLikeImgPATH = img_path
-    #        break
-    #     if(similarity > similarityMax):
-    #         similarityMax = similarity
-    #         theMostLike = cv2.imread(img_path)
-    #         theMostLikeImgPATH = img_path
-    # print(f"similarityMax : {similarityMax}")
-    # print(f"theMostLikeImgPATH : {theMostLikeImgPATH}")
+    for img_path in folder.glob('*.png'):
+        similarity = beamSimilarity(img_path, beamCompared, r)
+        if(similarity > 0.95):
+           similarityMax = similarity
+           theMostLike = cv2.imread(img_path) 
+           theMostLikeImgPATH = img_path
+           break
+        if(similarity > similarityMax):
+            similarityMax = similarity
+            theMostLike = cv2.imread(img_path)
+            theMostLikeImgPATH = img_path
+    print(f"similarityMax : {similarityMax}")
+    print(f"theMostLikeImgPATH : {theMostLikeImgPATH}")
     # cv2.imshow('theMostLike', theMostLike)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
-    return best_score, best_path
+    return similarityMax, theMostLikeImgPATH
 
 
 # beamDetect("C:/Users/samuel901213/Downloads/beam/render_rot90/worldX360Y360Z090.png")
