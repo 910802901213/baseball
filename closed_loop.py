@@ -17,6 +17,7 @@ import board
 import matplotlib.pyplot as plt
 import numpy as np
 import cv2
+import csv
 from apriltag_test import calibrate
 # result = subprocess.Popen(
 #                 [r"D:\GoProMocapSystem_Released\server\time_sync.exe"],
@@ -50,6 +51,18 @@ def get_latest_folder_by_ctime(path):
     folders = [os.path.join(path, f) for f in os.listdir(path) if os.path.isdir(os.path.join(path, f))]
     folders.sort(key=os.path.getctime, reverse=True)
     return os.path.basename(folders[0]) if folders else None
+
+def log_value(targetX, targetY, nowX, nowY, filename):
+    file_exists = os.path.exists(filename)
+
+    # 開啟檔案（沒有就自動建立），每次追加一行
+    with open(filename, mode="a", newline="", encoding="utf-8") as file:
+        writer = csv.writer(file)
+        # 如果檔案不存在，就先寫入標題列
+        if not file_exists:
+            writer.writerow(["目標位置X", "目標位置Y", "當前打到位置X", "當前打到位置Y"])
+        # 寫入資料
+        writer.writerow([targetX, targetY, nowX, nowY])
 
 # 啟動 server.exe，開啟 stdout 和 stdin
 proc = subprocess.Popen(
@@ -142,6 +155,8 @@ def start_reording():
         dx = No5_coor[0] - centerCross2D[0]
         dy = No5_coor[1] - centerCross2D[1]
 
+        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], "data_log.csv") # record data
+
         ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
         plc = pymcprotocol.Type3E()
         plc.connect("192.168.50.18", 5001)
@@ -170,6 +185,7 @@ def start_reording():
         plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
 
         trigger_redlight_launcher(True)
+
     elif(len(subdirs) > 1): 
         print("不只一個資料夾")
         latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
@@ -199,6 +215,8 @@ def start_reording():
         No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
         dx = No5_coor[0] - centerCross2D[0]
         dy = No5_coor[1] - centerCross2D[1]
+
+        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], "data_log.csv") # record data
 
         ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
         plc = pymcprotocol.Type3E()
