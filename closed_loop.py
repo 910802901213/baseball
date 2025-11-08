@@ -19,6 +19,7 @@ import numpy as np
 import cv2
 import csv
 from apriltag_test import calibrate
+import math
 # result = subprocess.Popen(
 #                 [r"D:\GoProMocapSystem_Released\server\time_sync.exe"],
 #                 stdout=subprocess.PIPE,
@@ -89,6 +90,8 @@ camera_matrix9920 = np.array([[1.34149888e+03, 0.00000000e+00, 1.35875136e+03],
                               [0.00000000e+00, 0.00000000e+00, 1.00000000e+00]])
 ## 9920 distortion
 camera_matrix9920 = np.array([[-0.28035773,  0.12320289, -0.00042114,  0.0010094,  -0.03191528]])
+stop = [] # 全域變數 用來判斷是否已達目標位置 若已收斂則不再調整
+radius = 25 # 收斂閥值
 
 # 當 ESP8266 發送請求到 /start_recording 時，處理 GET 請求
 @app.route('/red_on', methods=['GET'])
@@ -140,6 +143,11 @@ def start_reording():
         kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
         print("kzone結束")
         worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
+        # if(worlds == -99):
+        #     return "uncertain case, stop func!"
+        # plt.show()
+        plt.savefig("output.png")   # 存成圖檔
+        plt.close()
         intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
         
         ax.set_xlabel('X')
@@ -147,42 +155,41 @@ def start_reording():
         ax.set_zlabel('Z')
         ax.set_title('3D Scatter Plot')
 
-        # plt.show()
-        plt.savefig("output.png")   # 存成圖檔
-        plt.close()
+        
 
         No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
         dx = No5_coor[0] - centerCross2D[0]
         dy = No5_coor[1] - centerCross2D[1]
 
         log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], "data_log.csv") # record data
+        distance = math.sqrt((centerCross2D[0] - No5_coor[0])**2 + (centerCross2D[1] - No5_coor[1])**2)
+        stop.append(distance)
+        if(len(stop) < 2 or stop[-1] > radius or stop[-2] > radius):
+            ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
+            plc = pymcprotocol.Type3E()
+            plc.connect("192.168.50.18", 5001)
 
-        ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-        plc = pymcprotocol.Type3E()
-        plc.connect("192.168.50.18", 5001)
-        dataX = plc.batchread_wordunits("SD5502", 1)
+            # read the xy position of motor
+            dataX = plc.batchread_wordunits("SD5502", 1)
+            motorX_params = dataX[0]
+            dataY = plc.batchread_wordunits("SD5542", 1)
+            motorY_params = dataY[0]
 
-        # 組合成 32-bit 無號整數
-        motorX_params = dataX[0]
-        
-        dataY = plc.batchread_wordunits("SD5542", 1)
+            print("SD5502 (軸X 當前位置):", motorX_params)
+            print("SD5542 (軸Y 當前位置):", motorY_params)
+            print("dx: ", dx)
+            print("dy: ", dy)
 
-        # 組合成 32-bit 無號整數
-        motorY_params = dataY[0]
+            Kp = 4
+            motorX_params = motorX_params + Kp * dx
+            motorY_params = motorY_params - Kp * dy
 
-        print("SD5502 (軸X 當前位置):", motorX_params)
-        print("SD5542 (軸Y 當前位置):", motorY_params)
-        print("dx: ", dx)
-        print("dy: ", dy)
-        Kp = 2
-        motorX_params = motorX_params + Kp * dx
-        motorY_params = motorY_params - Kp * dy
-
-        plc.batchwrite_wordunits("D102", [int(motorX_params)])
-        plc.batchwrite_wordunits("D202", [int(motorY_params)])
-        plc.batchwrite_bitunits("M700", [1])
-        time.sleep(1)  # 給 PLC 足夠掃描時間
-        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+            # write the new value to PLC
+            plc.batchwrite_wordunits("D102", [int(motorX_params)])
+            plc.batchwrite_wordunits("D202", [int(motorY_params)])
+            plc.batchwrite_bitunits("M700", [1])
+            time.sleep(1)  # 給 PLC 足夠掃描時間
+            plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
 
         trigger_redlight_launcher(True)
 
@@ -202,6 +209,11 @@ def start_reording():
         kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
         print("kzone結束")
         worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
+        # if(worlds == -99):
+        #     return "uncertain case, stop func!"
+        # plt.show()
+        plt.savefig("output.png")   # 存成圖檔
+        plt.close()
         intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
         
         ax.set_xlabel('X')
@@ -209,41 +221,40 @@ def start_reording():
         ax.set_zlabel('Z')
         ax.set_title('3D Scatter Plot')
 
-        # plt.show()
-        plt.savefig("output.png")   # 存成圖檔
-        plt.close()
+        
         No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
         dx = No5_coor[0] - centerCross2D[0]
         dy = No5_coor[1] - centerCross2D[1]
 
         log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], "data_log.csv") # record data
+        distance = math.sqrt((centerCross2D[0] - No5_coor[0])**2 + (centerCross2D[1] - No5_coor[1])**2)
+        stop.append(distance)
+        if(len(stop) < 2 or stop[-1] > radius or stop[-2] > radius):
+            ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
+            plc = pymcprotocol.Type3E()
+            plc.connect("192.168.50.18", 5001)
 
-        ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-        plc = pymcprotocol.Type3E()
-        plc.connect("192.168.50.18", 5001)
-        dataX = plc.batchread_wordunits("SD5502", 1)
+            # read the xy position of motor
+            dataX = plc.batchread_wordunits("SD5502", 1)
+            motorX_params = dataX[0]      
+            dataY = plc.batchread_wordunits("SD5542", 1)
+            motorY_params = dataY[0]
 
-        # 組合成 32-bit 無號整數
-        motorX_params = dataX[0]
-        
-        dataY = plc.batchread_wordunits("SD5542", 1)
+            print("SD5502 (軸X 當前位置):", motorX_params)
+            print("SD5542 (軸Y 當前位置):", motorY_params)
+            print("dx: ", dx)
+            print("dy: ", dy)
 
-        # 組合成 32-bit 無號整數
-        motorY_params = dataY[0]
+            Kp = 2
+            motorX_params = motorX_params + Kp * dx
+            motorY_params = motorY_params - Kp * dy
 
-        print("SD5502 (軸X 當前位置):", motorX_params)
-        print("SD5542 (軸Y 當前位置):", motorY_params)
-        print("dx: ", dx)
-        print("dy: ", dy)
-        Kp = 2
-        motorX_params = motorX_params + Kp * dx
-        motorY_params = motorY_params - Kp * dy
-
-        # plc.batchwrite_wordunits("D102", [int(motorX_params)])
-        # # plc.batchwrite_wordunits("D202", [int(motorY_params)])
-        # plc.batchwrite_bitunits("M700", [1])
-        # time.sleep(1)  # 給 PLC 足夠掃描時間
-        # plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+            # write the new value to PLC
+            plc.batchwrite_wordunits("D102", [int(motorX_params)])
+            plc.batchwrite_wordunits("D202", [int(motorY_params)])
+            plc.batchwrite_bitunits("M700", [1])
+            time.sleep(1)  # 給 PLC 足夠掃描時間
+            plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
 
         trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
