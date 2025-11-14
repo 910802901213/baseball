@@ -105,43 +105,43 @@ import numpy as np
 ###########################################################################################
 
 def time_sync(Img9920, Img6808, pixs9920, pixs6808):
-    # img6808 = cv2.cvtColor(Img6808, cv2.COLOR_BGR2GRAY)
-    # img9920 = cv2.cvtColor(Img9920, cv2.COLOR_BGR2GRAY)
+    img6808 = cv2.cvtColor(Img6808, cv2.COLOR_BGR2GRAY)
+    img9920 = cv2.cvtColor(Img9920, cv2.COLOR_BGR2GRAY)
 
-    # sift = cv2.SIFT_create()
+    sift = cv2.SIFT_create()
 
-    # # 偵測特徵點並計算描述子
-    # kp6808, des6808 = sift.detectAndCompute(img6808, None)
-    # kp9920, des9920 = sift.detectAndCompute(img9920, None)
+    # 偵測特徵點並計算描述子
+    kp6808, des6808 = sift.detectAndCompute(img6808, None)
+    kp9920, des9920 = sift.detectAndCompute(img9920, None)
 
-    # # 建立 BFMatcher(KNN 匹配)
-    # bf = cv2.BFMatcher()
-    # matches = bf.knnMatch(des6808, des9920, k=2) # choose 2 canditates
+    # 建立 BFMatcher(KNN 匹配)
+    bf = cv2.BFMatcher()
+    matches = bf.knnMatch(des6808, des9920, k=2) # choose 2 canditates
 
-    # # Lowe's ratio test 過濾匹配
-    # good = []
-    # pts6808, pts9920 = [], []
-    # for m, n in matches:
-    #     # matches structure :
-    #     # [
-    #     #     [DMatch(queryIdx=0, trainIdx=5, distance=0.12), DMatch(queryIdx=0, trainIdx=20, distance=0.15)],
-    #     #     [DMatch(queryIdx=1, trainIdx=7, distance=0.20), DMatch(queryIdx=1, trainIdx=30, distance=0.28)],
-    #     #     [DMatch(queryIdx=2, trainIdx=50, distance=0.09), DMatch(queryIdx=2, trainIdx=10, distance=0.11)],
-    #     #     ...
-    #     # ]
-    #     if m.distance < 0.75 * n.distance:
-    #         good.append(m)
-    #         pts6808.append(kp6808[m.queryIdx].pt)
-    #         pts9920.append(kp9920[m.trainIdx].pt)
+    # Lowe's ratio test 過濾匹配
+    good = []
+    pts6808, pts9920 = [], []
+    for m, n in matches:
+        # matches structure :
+        # [
+        #     [DMatch(queryIdx=0, trainIdx=5, distance=0.12), DMatch(queryIdx=0, trainIdx=20, distance=0.15)],
+        #     [DMatch(queryIdx=1, trainIdx=7, distance=0.20), DMatch(queryIdx=1, trainIdx=30, distance=0.28)],
+        #     [DMatch(queryIdx=2, trainIdx=50, distance=0.09), DMatch(queryIdx=2, trainIdx=10, distance=0.11)],
+        #     ...
+        # ]
+        if m.distance < 0.75 * n.distance:
+            good.append(m)
+            pts6808.append(kp6808[m.queryIdx].pt)
+            pts9920.append(kp9920[m.trainIdx].pt)
 
-    # # draw_match(img1, img2, kp1, kp2, good)
-    # # 轉為 numpy 陣列
-    # import numpy as np
+    # draw_match(img1, img2, kp1, kp2, good)
+    # 轉為 numpy 陣列
+    import numpy as np
 
-    # # print("匹配點數量:", len(pts1))
+    # print("匹配點數量:", len(pts1))
 
-    # pts6808 = np.float32([kp6808[m.queryIdx].pt for m in good])
-    # pts9920 = np.float32([kp9920[m.trainIdx].pt for m in good])
+    pts6808 = np.float32([kp6808[m.queryIdx].pt for m in good])
+    pts9920 = np.float32([kp9920[m.trainIdx].pt for m in good])
 
     extrin9920 = np.load('calibration_conimg_9920/extrinsic9920.npy')  # 載入 .npy 檔案
     intrin9920 = np.load('calibration_conimg_9920/intrinsic9920.npy')
@@ -152,40 +152,40 @@ def time_sync(Img9920, Img6808, pixs9920, pixs6808):
     undist_intrin6808 = np.load('calibration_conimg_6808/undist_intrinsic6808.npy')
     dist_params6808 = np.load('calibration_conimg_6808/dist_params6808.npy')
 
-    # # 把像素點去畸變 → 歸一化座標
-    # pts6808n = cv2.undistortPoints(pts6808.reshape(-1,1,2), intrin6808, dist_params6808)  # -> (N,1,2)
-    # pts9920n = cv2.undistortPoints(pts9920.reshape(-1,1,2), intrin9920, dist_params9920)
+    # 把像素點去畸變 → 歸一化座標
+    pts6808n = cv2.undistortPoints(pts6808.reshape(-1,1,2), intrin6808, dist_params6808)  # -> (N,1,2)
+    pts9920n = cv2.undistortPoints(pts9920.reshape(-1,1,2), intrin9920, dist_params9920)
 
-    # pts6808n = pts6808n.reshape(-1,2)
-    # pts9920n = pts9920n.reshape(-1,2)
+    pts6808n = pts6808n.reshape(-1,2)
+    pts9920n = pts9920n.reshape(-1,2)
 
-    # E, maskE = cv2.findEssentialMat(pts6808n, pts9920n, method=cv2.RANSAC,
-    #                                 prob=0.999, threshold=1e-3)
+    E, maskE = cv2.findEssentialMat(pts6808n, pts9920n, method=cv2.RANSAC,
+                                    prob=0.999, threshold=1e-3)
     
-    # # inliers1 = pts6808n[maskE.ravel()==1]
-    # # inliers2 = pts9920n[maskE.ravel()==1]
-    # # E, _ = cv2.findEssentialMat(inliers1, inliers2, method=cv2.LMEDS)
-    # # E = findEByMath()
+    # inliers1 = pts6808n[maskE.ravel()==1]
+    # inliers2 = pts9920n[maskE.ravel()==1]
+    # E, _ = cv2.findEssentialMat(inliers1, inliers2, method=cv2.LMEDS)
+    # E = findEByMath()
     
 
-    # inlier_matches = [m for m, keep in zip(good, maskE.ravel()) if keep]
+    inlier_matches = [m for m, keep in zip(good, maskE.ravel()) if keep]
 
-    # print(f"總共 good matches: {len(good)}, RANSAC inliers: {len(inlier_matches)}")
+    print(f"總共 good matches: {len(good)}, RANSAC inliers: {len(inlier_matches)}")
 
-    # img_matches = cv2.drawMatches(
-    #     Img6808, kp6808,
-    #     Img9920, kp9920,
-    #     inlier_matches, None,
-    #     flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
-    # )
-    # outimage = cv2.resize(img_matches, dsize=None, fx=1/3, fy=1/3)
-    # print("Essential Matrix: ", E)
-    # cv2.imshow("RANSAC inliers", outimage)
-    # cv2.waitKey(0)
+    img_matches = cv2.drawMatches(
+        Img6808, kp6808,
+        Img9920, kp9920,
+        inlier_matches, None,
+        flags=cv2.DrawMatchesFlags_NOT_DRAW_SINGLE_POINTS
+    )
+    outimage = cv2.resize(img_matches, dsize=None, fx=1/3, fy=1/3)
+    print("Essential Matrix: ", E)
+    cv2.imshow("RANSAC inliers", outimage)
+    cv2.waitKey(0)
 
-    E = np.array([[    0.10574  ,   0.31777   , -0.20756],
- [    -0.1626  ,  0.013469  ,  -0.65531],
- [    0.28831  ,   0.55085  ,  0.046511]])
+#     E = np.array([[   -0.15961  ,   -0.4466  ,    0.2667],
+#  [    0.31906  ,  0.005884  ,   0.58809],
+#  [   -0.29381  ,  -0.41125 ,  -0.028492]])
     # this transform is to match undistortPoints() format
     pixs9920 = pixs9920.reshape(-1, 1, 2).astype(np.float32)
     pixs6808 = pixs6808.reshape(-1, 1, 2).astype(np.float32)

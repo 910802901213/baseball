@@ -53,7 +53,7 @@ def get_latest_folder_by_ctime(path):
     folders.sort(key=os.path.getctime, reverse=True)
     return os.path.basename(folders[0]) if folders else None
 
-def log_value(targetX, targetY, nowX, nowY, filename):
+def log_value(targetX, targetY, nowX, nowY, ok, filename):
     file_exists = os.path.exists(filename)
 
     # 開啟檔案（沒有就自動建立），每次追加一行
@@ -63,7 +63,7 @@ def log_value(targetX, targetY, nowX, nowY, filename):
         if not file_exists:
             writer.writerow(["目標位置X", "目標位置Y", "當前打到位置X", "當前打到位置Y"])
         # 寫入資料
-        writer.writerow([targetX, targetY, nowX, nowY])
+        writer.writerow([targetX, targetY, nowX, nowY, ok])
 
 # 啟動 server.exe，開啟 stdout 和 stdin
 proc = subprocess.Popen(
@@ -91,6 +91,9 @@ camera_matrix9920 = np.array([[1.34149888e+03, 0.00000000e+00, 1.35875136e+03],
 ## 9920 distortion
 camera_matrix9920 = np.array([[-0.28035773,  0.12320289, -0.00042114,  0.0010094,  -0.03191528]])
 stop = [] # 全域變數 用來判斷是否已達目標位置 若已收斂則不再調整
+motorParmXRec = []
+motorParmYRec = []
+ballX = []
 radius = 25 # 收斂閥值
 
 # 當 ESP8266 發送請求到 /start_recording 時，處理 GET 請求
@@ -119,9 +122,11 @@ def start_reording():
     # find if there is only one file in "data" folder
     subdirs = [d for d in os.listdir("data") if os.path.isdir(os.path.join("data", d))] 
     print(subdirs)
+
+    latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
+
     if(len(subdirs) == 1): 
-        print("只有一個資料夾")
-        latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
+        print("只有一個資料夾")        
         cap9920 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam1.MP4"))
         cap6808 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam2.MP4"))
         ret9920, frame9920 = cap9920.read()
@@ -131,132 +136,85 @@ def start_reording():
         calibrate("9920", frame9920)
         calibrate("6808", frame6808)
 
-        #########################################################
-        ### 此為假定，待修正
-        video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
-        video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
-        #########################################################
+    #########################################################
+    ### 此為假定，待修正
+    video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
+    video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
+    #########################################################
 
-        fig = plt.figure(figsize=(8, 6))
-        ax = fig.add_subplot(111, projection='3d')
-        print("kzone預備")
-        kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
-        print("kzone結束")
-        worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
-        # if(worlds == -99):
-        #     return "uncertain case, stop func!"
-        # plt.show()
-        plt.savefig("output.png")   # 存成圖檔
-        plt.close()
-        intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
-        
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_title('3D Scatter Plot')
+    fig = plt.figure(figsize=(8, 6))
+    ax = fig.add_subplot(111, projection='3d')
+    print("kzone預備")
+    kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
+    print("kzone結束")
+    worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
+    # if(worlds == -99):
+    #     return "uncertain case, stop func!"
+    # plt.show()
+    plt.savefig("output.png")   # 存成圖檔
+    plt.close()
+    intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
+    ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
 
-        
+    ax.set_xlabel('X')
+    ax.set_ylabel('Y')
+    ax.set_zlabel('Z')
+    ax.set_title('3D Scatter Plot')
 
-        No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
-        dx = No5_coor[0] - centerCross2D[0]
-        dy = No5_coor[1] - centerCross2D[1]
+    plc = pymcprotocol.Type3E()
+    plc.connect("192.168.50.18", 5001)
 
-        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], "data_log.csv") # record data
-        distance = math.sqrt((centerCross2D[0] - No5_coor[0])**2 + (centerCross2D[1] - No5_coor[1])**2)
-        stop.append(distance)
-        if(len(stop) < 2 or stop[-1] > radius or stop[-2] > radius):
-            ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-            plc = pymcprotocol.Type3E()
-            plc.connect("192.168.50.18", 5001)
+    # read the xy position of motor
+    dataX = plc.batchread_wordunits("SD5502", 1)
+    motorX_params = dataX[0]
+    motorParmXRec.append(motorX_params) # 紀錄馬達當前位置
+    dataY = plc.batchread_wordunits("SD5542", 1)
+    motorY_params = dataY[0]
+    motorParmYRec.append(motorY_params) # 紀錄馬達當前位置
+     
+    # 計算5號位以及差值
+    No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
+    dx = No5_coor[0] - centerCross2D[0]
+    dy = No5_coor[1] - centerCross2D[1]
 
-            # read the xy position of motor
-            dataX = plc.batchread_wordunits("SD5502", 1)
-            motorX_params = dataX[0]
-            dataY = plc.batchread_wordunits("SD5542", 1)
-            motorY_params = dataY[0]
+    distance = math.sqrt((centerCross2D[0] - No5_coor[0])**2 + (centerCross2D[1] - No5_coor[1])**2)
+    stop.append(distance)
+    if(len(ballX) == 1 or (abs(ballX[-1] - ballX[-2]) / 20 <= abs(motorParmXRec[-1] - motorParmXRec[-2]) / 100) * 2): # 確保並非誤差峰值
+        ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
+        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], 1, "data_log.csv") # record data
+        Kp = 4
+        motorX_params = motorX_params + Kp * dx
+        motorY_params = motorY_params - Kp * dy
 
-            print("SD5502 (軸X 當前位置):", motorX_params)
-            print("SD5542 (軸Y 當前位置):", motorY_params)
-            print("dx: ", dx)
-            print("dy: ", dy)
+        # while(plc.batchread_wordunits("SD5502", 1) != int(motorX_params)): # 確保有完成馬達移動
+        #     # write the new value to PLC
+        #     plc.batchwrite_wordunits("D102", [int(motorX_params)])
+        #     # plc.batchwrite_wordunits("D202", [int(motorY_params)])
+        #     plc.batchwrite_bitunits("M700", [1])
+        #     time.sleep(1)  # 給 PLC 足夠掃描時間
+        #     plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+        #     time.sleep(1)
 
-            Kp = 4
-            motorX_params = motorX_params + Kp * dx
-            motorY_params = motorY_params - Kp * dy
+        # write the new value to PLC
+        print("目標馬達值 X: ", int(motorX_params))
+        plc.batchwrite_wordunits("D102", [int(motorX_params)])
+        plc.batchwrite_wordunits("D202", [int(50)])
+        plc.batchwrite_bitunits("M700", [1])
+        time.sleep(1)  # 給 PLC 足夠掃描時間
+        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+        time.sleep(1)
+        print("控制後馬達值 X: ", plc.batchread_wordunits("SD5502", 1))
+    else:
+        # 誤差峰值 不納入控制回授
+        print("誤差峰值 不納入控制回授")
+        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], 0, "data_log.csv")
+        ballX.pop()
+        motorParmXRec.pop()
+        motorParmYRec.pop()
 
-            # write the new value to PLC
-            plc.batchwrite_wordunits("D102", [int(motorX_params)])
-            plc.batchwrite_wordunits("D202", [int(motorY_params)])
-            plc.batchwrite_bitunits("M700", [1])
-            time.sleep(1)  # 給 PLC 足夠掃描時間
-            plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
 
-        trigger_redlight_launcher(True)
 
-    elif(len(subdirs) > 1): 
-        print("不只一個資料夾")
-        latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
-
-        #########################################################
-        ### 此為假定，待修正
-        video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
-        video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
-        #########################################################
-
-        fig = plt.figure(figsize=(8, 6))
-        ax = fig.add_subplot(111, projection='3d')
-        print("kzone預備")
-        kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
-        print("kzone結束")
-        worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
-        # if(worlds == -99):
-        #     return "uncertain case, stop func!"
-        # plt.show()
-        plt.savefig("output.png")   # 存成圖檔
-        plt.close()
-        intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
-        
-        ax.set_xlabel('X')
-        ax.set_ylabel('Y')
-        ax.set_zlabel('Z')
-        ax.set_title('3D Scatter Plot')
-
-        
-        No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
-        dx = No5_coor[0] - centerCross2D[0]
-        dy = No5_coor[1] - centerCross2D[1]
-
-        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], "data_log.csv") # record data
-        distance = math.sqrt((centerCross2D[0] - No5_coor[0])**2 + (centerCross2D[1] - No5_coor[1])**2)
-        stop.append(distance)
-        if(len(stop) < 2 or stop[-1] > radius or stop[-2] > radius):
-            ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-            plc = pymcprotocol.Type3E()
-            plc.connect("192.168.50.18", 5001)
-
-            # read the xy position of motor
-            dataX = plc.batchread_wordunits("SD5502", 1)
-            motorX_params = dataX[0]      
-            dataY = plc.batchread_wordunits("SD5542", 1)
-            motorY_params = dataY[0]
-
-            print("SD5502 (軸X 當前位置):", motorX_params)
-            print("SD5542 (軸Y 當前位置):", motorY_params)
-            print("dx: ", dx)
-            print("dy: ", dy)
-
-            Kp = 2
-            motorX_params = motorX_params + Kp * dx
-            motorY_params = motorY_params - Kp * dy
-
-            # write the new value to PLC
-            plc.batchwrite_wordunits("D102", [int(motorX_params)])
-            plc.batchwrite_wordunits("D202", [int(motorY_params)])
-            plc.batchwrite_bitunits("M700", [1])
-            time.sleep(1)  # 給 PLC 足夠掃描時間
-            plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
-
-        trigger_redlight_launcher(True)
+    trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
     
 
