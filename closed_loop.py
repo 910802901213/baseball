@@ -210,10 +210,6 @@ def start_reording():
         # write the new value to PLC
         print("目標馬達值 X: ", int(motorX_params))
         plc.batchwrite_wordunits("D102", [int(motorX_params)])
-        plc.batchwrite_bitunits("M700", [1])
-        time.sleep(1)  # 給 PLC 足夠掃描時間
-        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
-        time.sleep(1)
         print("控制後馬達值 X: ", plc.batchread_wordunits("SD5502", 1))
     else:
         # 誤差峰值 不納入控制回授
@@ -238,10 +234,6 @@ def start_reording():
         # write the new value to PLC
         print("目標馬達值 Y: ", int(motorY_params))
         plc.batchwrite_wordunits("D202", [int(motorY_params)])
-        plc.batchwrite_bitunits("M700", [1])
-        time.sleep(1)  # 給 PLC 足夠掃描時間
-        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
-        time.sleep(1)
         print("控制後馬達值 Y: ", plc.batchread_wordunits("SD5542", 1))
     else:
         # 誤差峰值 不納入控制回授
@@ -249,6 +241,12 @@ def start_reording():
         ballY.pop()
         motorParmYRec.pop()
     # np.save('ballY.npy', ballY)
+    
+    # 馬達點位調整
+    plc.batchwrite_bitunits("M700", [1])
+    time.sleep(1)  # 給 PLC 足夠掃描時間
+    plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+    time.sleep(1)
 
     trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
