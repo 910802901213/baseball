@@ -179,8 +179,9 @@ if __name__ == '__main__':
     # time.sleep(5)
     # ssh_run_command('192.168.50.12', 22, 'vince', 'Qwe70504', 'bash run_client.sh')    
     # time.sleep(15)
-
-    trigger_redlight_launcher(True)
+    while(1):
+        trigger_redlight_launcher(True)
+        time.sleep(20)
     # print("start to monitor http")
     # app.run(host='0.0.0.0', port=5000)
 

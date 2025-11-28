@@ -53,7 +53,7 @@ def get_latest_folder_by_ctime(path):
     folders.sort(key=os.path.getctime, reverse=True)
     return os.path.basename(folders[0]) if folders else None
 
-def log_value(targetX, targetY, nowX, nowY, ok, filename):
+def log_value(targetX, targetY, nowX, nowY, ok, distance, motorX_params, motorY_params, filename):
     file_exists = os.path.exists(filename)
 
     # 開啟檔案（沒有就自動建立），每次追加一行
@@ -61,9 +61,9 @@ def log_value(targetX, targetY, nowX, nowY, ok, filename):
         writer = csv.writer(file)
         # 如果檔案不存在，就先寫入標題列
         if not file_exists:
-            writer.writerow(["目標位置X", "目標位置Y", "當前打到位置X", "當前打到位置Y"])
+            writer.writerow(["目標位置X", "目標位置Y", "當前打到位置X", "當前打到位置Y", "與原點距離", "motorX_params", "motorY_params"])
         # 寫入資料
-        writer.writerow([targetX, targetY, nowX, nowY, ok])
+        writer.writerow([targetX, targetY, nowX, nowY, ok, distance, motorX_params, motorY_params])
 
 # 啟動 server.exe，開啟 stdout 和 stdin
 proc = subprocess.Popen(
@@ -94,11 +94,22 @@ stop = [] # 全域變數 用來判斷是否已達目標位置 若已收斂則不
 motorParmXRec = []
 motorParmYRec = []
 ballX = []
+ballY = []
 radius = 25 # 收斂閥值
 
 # 當 ESP8266 發送請求到 /start_recording 時，處理 GET 請求
 @app.route('/red_on', methods=['GET'])
 def start_reording():
+
+    # if os.path.isfile(r"D:\GoProMocapSystem_Released\server\ballX.npy"):
+    #     print("檔案 ballX.npy 存在！")
+    #     ballX = list(np.load(r"D:\GoProMocapSystem_Released\server\ballX.npy"))
+    #     ballY = list(np.load(r"D:\GoProMocapSystem_Released\server\ballY.npy"))
+    # else:
+    #     print("檔案 ballX.npy 不存在！")
+    #     ballX = []
+    #     ballY = []
+
     proc.stdin.write("record\n")
     proc.stdin.flush()
 
@@ -155,6 +166,7 @@ def start_reording():
     plt.close()
     intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
     ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
+    ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -179,12 +191,12 @@ def start_reording():
 
     distance = math.sqrt((centerCross2D[0] - No5_coor[0])**2 + (centerCross2D[1] - No5_coor[1])**2)
     stop.append(distance)
-    if(len(ballX) == 1 or (abs(ballX[-1] - ballX[-2]) / 20 <= abs(motorParmXRec[-1] - motorParmXRec[-2]) / 100) * 2): # 確保並非誤差峰值
+
+    log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], 1, distance, motorX_params, motorY_params, "data_log.csv") # record data
+    if(len(ballX) == 1 or ((abs(ballX[-1] - ballX[-2]) / 20) <= ((abs(motorParmXRec[-1] - motorParmXRec[-2]) / 100) * 2))): # 確保並非誤差峰值
         ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], 1, "data_log.csv") # record data
-        Kp = 4
-        motorX_params = motorX_params + Kp * dx
-        motorY_params = motorY_params - Kp * dy
+        KpX = 4
+        motorX_params = motorX_params + KpX * dx
 
         # while(plc.batchread_wordunits("SD5502", 1) != int(motorX_params)): # 確保有完成馬達移動
         #     # write the new value to PLC
@@ -198,7 +210,6 @@ def start_reording():
         # write the new value to PLC
         print("目標馬達值 X: ", int(motorX_params))
         plc.batchwrite_wordunits("D102", [int(motorX_params)])
-        plc.batchwrite_wordunits("D202", [int(50)])
         plc.batchwrite_bitunits("M700", [1])
         time.sleep(1)  # 給 PLC 足夠掃描時間
         plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
@@ -206,69 +217,41 @@ def start_reording():
         print("控制後馬達值 X: ", plc.batchread_wordunits("SD5502", 1))
     else:
         # 誤差峰值 不納入控制回授
-        print("誤差峰值 不納入控制回授")
-        log_value(No5_coor[0], No5_coor[1], centerCross2D[0], centerCross2D[1], 0, "data_log.csv")
+        print("X誤差峰值 不納入X控制回授")
         ballX.pop()
         motorParmXRec.pop()
+    # np.save('ballX.npy', ballX)
+    if(len(ballY) == 1 or ((abs(ballY[-1] - ballY[-2]) / 20) <= ((abs(motorParmYRec[-1] - motorParmYRec[-2]) / 20) * 2))): # 確保並非誤差峰值
+        ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
+        KpY = 1.5
+        motorY_params = motorY_params - KpY * dy
+
+        # while(plc.batchread_wordunits("SD5502", 1) != int(motorX_params)): # 確保有完成馬達移動
+        #     # write the new value to PLC
+        #     plc.batchwrite_wordunits("D102", [int(motorX_params)])
+        #     # plc.batchwrite_wordunits("D202", [int(motorY_params)])
+        #     plc.batchwrite_bitunits("M700", [1])
+        #     time.sleep(1)  # 給 PLC 足夠掃描時間
+        #     plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+        #     time.sleep(1)
+
+        # write the new value to PLC
+        print("目標馬達值 Y: ", int(motorY_params))
+        plc.batchwrite_wordunits("D202", [int(motorY_params)])
+        plc.batchwrite_bitunits("M700", [1])
+        time.sleep(1)  # 給 PLC 足夠掃描時間
+        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+        time.sleep(1)
+        print("控制後馬達值 Y: ", plc.batchread_wordunits("SD5542", 1))
+    else:
+        # 誤差峰值 不納入控制回授
+        print("Y誤差峰值 不納入Y控制回授")
+        ballY.pop()
         motorParmYRec.pop()
-
-
+    # np.save('ballY.npy', ballY)
 
     trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
-    
-
-@app.route('/end_recording', methods=['GET'])
-def end_reording_analysis():
-    proc.stdin.write("record\n")
-    proc.stdin.flush()
-    time.sleep(3)
-    proc.stdin.write("download\n")
-    proc.stdin.flush()
-    time.sleep(20) 
-    subprocess.Popen(["time_sync.exe"])
-    time.sleep(20) 
-
-    #---------------------------------------------------------------------------------------------------------
-    # latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
-    # syn_folder_path = os.path.join("data", latest_folder_name, "synchronized")
-    # if not os.path.exists(syn_folder_path):
-    #     print(f"資料夾不存在：{syn_folder_path}")
-
-    # # 取得資料夾底下所有檔案（不包含資料夾）
-    # videos = [f for f in os.listdir(syn_folder_path) if os.path.isfile(os.path.join(syn_folder_path, f))]
-
-    # #########################################################
-    # ### 此為假定，待修正
-    # video_path9920 = os.path.join(syn_folder_path, "cam1.MP4")
-    # video_path6808 = os.path.join(syn_folder_path, "cam2.MP4")
-    # #########################################################
-
-    # fig = plt.figure(figsize=(8, 6))
-    # ax = fig.add_subplot(111, projection='3d')
-
-    # kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone("D:\\GoProMocapSystem_Released\\server\\data\\202506160013\\synchronized\\body\\9920\\DCCZ2733.MP4", "D:\\GoProMocapSystem_Released\\server\\data\\202506160013\\synchronized\\body\\6808\\KJMR4984.MP4", ax)
-    # worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
-    # intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
-    
-    # ax.set_xlabel('X')
-    # ax.set_ylabel('Y')
-    # ax.set_zlabel('Z')
-    # ax.set_title('3D Scatter Plot')
-
-    # plt.show()
-
-    # No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
-    # dx = No5_coor[0] - centerCross2D[0]
-    # dy = No5_coor[1] - centerCross2D[1]
-    # # assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正)
-    # # motorX_params = motorX_params + Kp * dx
-    # # motorY_params = motorY_params - Kp * dy
-    #---------------------------------------------------------------------------------------------------------
-
-
-
-
 
 def ssh_run_command(host, port, user, password, command):
     ssh = paramiko.SSHClient()
