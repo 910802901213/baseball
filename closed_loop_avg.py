@@ -34,6 +34,18 @@ import math
 # plc = pymcprotocol.Type3E()
 # plc.connect("192.168.50.18", 5001)
 esp_redlight_ip = "192.168.50.88"  # 紅綠燈控制裝置
+esp8266_ip = "192.168.50.90"
+
+def send_speed_to_esp8266(speed):
+    print(f"\U0001F4E1 傳送球速 {speed} km/hr 給 ESP8266")
+    try:
+        conn = http.client.HTTPConnection(esp8266_ip, timeout=2)
+        conn.request("GET", f"/?level={speed}", headers={"Connection": "close"})
+        response = conn.getresponse()
+        print(f"  回應：{response.status}")
+        conn.close()
+    except Exception as e:
+        print(f"❌ 傳送失敗：{e}")
 
 # === 紅綠燈控制函式 ===
 def trigger_redlight_launcher(on=True):
@@ -57,7 +69,7 @@ import os
 import csv
 from datetime import datetime
 
-def log_value(nowX, nowY, motorX_params, motorY_params, filename, latest_folder_name):
+def log_value(nowX, nowY, motorX_params, motorY_params, speedAvg, filename, latest_folder_name):
     file_exists = os.path.exists(filename)
 
     # 取得目前時間（格式可自行調整）
@@ -74,7 +86,8 @@ def log_value(nowX, nowY, motorX_params, motorY_params, filename, latest_folder_
                 "當前打到位置X",
                 "當前打到位置Y",
                 "motorX_params",
-                "motorY_params"
+                "motorY_params",
+                "球速"
             ])
 
         # 寫入資料
@@ -83,7 +96,8 @@ def log_value(nowX, nowY, motorX_params, motorY_params, filename, latest_folder_
             nowX,
             nowY,
             motorX_params,
-            motorY_params
+            motorY_params,
+            speedAvg
         ])
 
 
@@ -124,10 +138,12 @@ def start_reording():
         print("檔案 ballX.npy ballY.npy存在!")
         ballX = list(np.load(r"D:\GoProMocapSystem_Released\server\ballX.npy"))
         ballY = list(np.load(r"D:\GoProMocapSystem_Released\server\ballY.npy"))     
+        speed = list(np.load(r"D:\GoProMocapSystem_Released\server\speed.npy"))   
     else:
         print("檔案 ballX.npy ballY.npy 不存在！")
         ballX = []
         ballY = []
+        speed = []
 
     proc.stdin.write("record\n")
     proc.stdin.flush()
@@ -194,17 +210,19 @@ def start_reording():
     print("kzone預備")
     kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
     print("kzone結束")
-    worlds = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
+    worlds, speedAvg = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
    
     plt.savefig("output.png")   # 存成圖檔
     plt.close()
     intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
-   
+    
     ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
     ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
+    speed.append(speedAvg)
 
     print("BallX.npy 內容", ballX)   
     print("BallY.npy 內容", ballY)
+    print("speed.npy 內容", speed)
 
     plc = pymcprotocol.Type3E()
     plc.connect("192.168.50.18", 5001)
@@ -215,10 +233,11 @@ def start_reording():
     dataY = plc.batchread_wordunits("SD5542", 1)
     motorY_params = dataY[0]
 
-    log_value(centerCross2D[0], centerCross2D[1], motorX_params, motorY_params, "data_log.csv", latest_folder_name)
+    log_value(centerCross2D[0], centerCross2D[1], motorX_params, motorY_params, speedAvg, "data_log.csv", latest_folder_name)
 
     np.save(r"D:\GoProMocapSystem_Released\server\ballX.npy", ballX)
     np.save(r"D:\GoProMocapSystem_Released\server\ballY.npy", ballY)
+    np.save(r"D:\GoProMocapSystem_Released\server\speed.npy", speed)
 
     ax.set_xlabel('X')
     ax.set_ylabel('Y')
@@ -228,7 +247,7 @@ def start_reording():
     
     # ballY=[-10.133333333333333, 4.2
     # 66666666666667, -22.866666666666667]
-    if(len(ballX) == 3):
+    if(len(ballX) == 1):
         print("!!")
         # plc = pymcprotocol.Type3E()
         # plc.connect("192.168.50.18", 5001)
@@ -242,15 +261,24 @@ def start_reording():
         # print("motorX_params: ", motorX_params)
         # print("motorY_params: ", motorY_params)
         
-        # 計算5號位以及差值
+        # 速度修正
+        targetSpeed = 100
+        ds = targetSpeed - (sum(speed) / len(speed))
+        Kps = 0.5
+        send_speed_to_esp8266(ds * Kps)
 
-        # No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2)
-        No5_coor = (0, 10)
-        dx = No5_coor[0] - (sum(ballX) / len(ballX))
-        dy = No5_coor[1] - (sum(ballY) / len(ballY))
+        # 計算目標號位以及差值
+        No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2) # 五號
+        No1_coor = (0, 10) # 一號
+        No3_coor = (40, 10)
+        No9_coor = (40, 50)
+        No7_coor = (0, 50)
+
+        dx = No7_coor[0] - (sum(ballX) / len(ballX))
+        dy = No7_coor[1] - (sum(ballY) / len(ballY))
 
         ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-        KpX = 4
+        KpX = 6
         KpY = 1.5
         motorX_params = motorX_params + KpX * dx
         motorY_params = motorY_params - KpY * dy
@@ -260,12 +288,13 @@ def start_reording():
         plc.batchwrite_wordunits("D202", [int(motorY_params)])
 
         # 馬達點位調整
-        # plc.batchwrite_bitunits("M700", [1])
-        # time.sleep(1)  # 給 PLC 足夠掃描時間
-        # plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
-        # time.sleep(1)
+        plc.batchwrite_bitunits("M700", [1])
+        time.sleep(1)  # 給 PLC 足夠掃描時間
+        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+        time.sleep(1)
         os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
         os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
+        os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
 
     trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
