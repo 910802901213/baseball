@@ -15,7 +15,7 @@ def extract_frames(video_path, output_folder):
         if not ret:
             break 
         
-        if(frameid % 1 == 0):
+        if(frameid % 2 == 0):
             
             frame_filename = os.path.join(output_folder, f"frame_{frame_count:04d}.jpg")
             while(os.path.exists(frame_filename)):
@@ -37,8 +37,8 @@ def extract_frames(video_path, output_folder):
 # video_path = "C:\\Users\\samuel901213\\Desktop\\YOLO_train_video\\6808\\GX010080.MP4"
 # output_folder = "C:\\Users\\samuel901213\\Desktop\\YOLO_train_video\\6808"  
 
-video_path = "D:\\GoProMocapSystem_Released\\server\\data\\202506160013\\synchronized\\baseball\\9920\\GX010101cut.MP4"
-output_folder = "C:\\Users\\samuel901213\\Desktop\\yolov8-master\\data\\baseball_finetune\\images\\train"
+video_path = r"D:\GoProMocapSystem_Released\server\data\202601091620\cam2.MP4"
+output_folder = r"C:\Users\samuel901213\Downloads\tmp"
 
 # 執行函式
 extract_frames(video_path, output_folder)

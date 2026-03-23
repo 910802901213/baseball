@@ -60,7 +60,7 @@ def img2Board_pixMatch(img):
         tranform = H @ model_pointsHom.T
         projected_points = tranform.T[:, :2] / tranform.T[:, 2:]
         error = np.linalg.norm(projected_points - permuted_points, axis=1).mean()
-        print(f"投影誤差: {error}")
+        # print(f"投影誤差: {error}")
         if error < min_error:
             min_error = error
             best_perm = perm
@@ -244,6 +244,7 @@ def find_board_base_YOLO(video_path9920, video_path6808, ax = None):
 
     # 繪製點
     ax.scatter(x_coords, y_coords, z_coords, color='b')
+    ax.scatter([-20,100], [-100, 100], [0, 200], color='b') # 為了讓可視化比例正常
 
     # 連線
     x_coords = [float(point[0]) for point in points.values()]
@@ -380,13 +381,17 @@ def find_kzone(path9920, path6808, ax):
     ###
 
     # points = find_board_base(ax) # 得到本壘板三維座標點
-    points, cornerPixel = find_board_base_YOLO(path9920, path6808, ax) # 得到本壘板三維座標點
+    points, cornerPixel = find_board_base_YOLO(path9920, path6808, ax) # 得到本壘板三維座標點  
 
     # Ztb = find_kzone_Ztb(path9920, path6808)
-    Ztb = np.array([130, 70])
+    Ztb = np.array([130, 65])
 
     # 提取 x, y, z 座標
     x_coords = [float(point[0]) for point in points.values()]
+    x_coords[1] += 10
+    x_coords[2] += 10
+    x_coords[3] -= 10
+    x_coords[4] -= 10
     y_coords = [float(point[1]) for point in points.values()]
     z_coords_kzone_top = [float(point[2] + Ztb[0]) for point in points.values()] 
     z_coords_kzone_bottom = [float(point[2] + Ztb[1]) for point in points.values()] 
@@ -486,36 +491,84 @@ def find_kzone(path9920, path6808, ax):
 
 def kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag, kzone2D_leftEdge_mag):
     # this function will visualize 2D kzone and return the intersection point
+    kzone2DPoints = kzone2DPoints.copy()
+    kzone2DPoints[:, 1] += 90
+    VISION = 600
     kzone2DPoints = kzone2DPoints * 15
     worlds = worlds * 15
     kzone2D_topEdge_mag = kzone2D_topEdge_mag * 15
     kzone2D_rightEdge_mag = kzone2D_rightEdge_mag * 15
     kzone2D_bottomEdge_mag = kzone2D_bottomEdge_mag * 15
     kzone2D_leftEdge_mag = kzone2D_leftEdge_mag * 15
-    img = np.zeros((int(kzone2D_rightEdge_mag) + 500, int(kzone2D_topEdge_mag) + 500), dtype=np.uint8)
-    cv2.line(img, (0 + 200, int(kzone2D_rightEdge_mag / 3) + 200), (int(kzone2D_topEdge_mag) + 200, int(kzone2D_rightEdge_mag / 3) + 200), 255, thickness = 2)
-    cv2.line(img, (0 + 200, int(kzone2D_rightEdge_mag * 2/3) + 200), (int(kzone2D_topEdge_mag) + 200, int(kzone2D_rightEdge_mag * 2/3) + 200), 255, thickness = 2)
-    cv2.line(img, (int(kzone2D_topEdge_mag / 3) + 200, 0 + 200), (int(kzone2D_topEdge_mag / 3) + 200, int(kzone2D_rightEdge_mag) + 200), 255, thickness = 2)
-    cv2.line(img, (int(kzone2D_topEdge_mag * 2/3) + 200, 0 + 200), (int(kzone2D_topEdge_mag * 2/3) + 200, int(kzone2D_rightEdge_mag) + 200), 255, thickness = 2)
+    img = np.zeros((int(kzone2D_rightEdge_mag) + 1200, int(kzone2D_topEdge_mag) + 1200), dtype=np.uint8)
+    # cv2.line(img, (0 + VISION - 10 * 15, 0 + VISION), (int(kzone2D_topEdge_mag) + VISION + 10 * 15, 0 + VISION), 255, thickness = 2) # 上
+    # cv2.line(img, (0 + VISION - 10 * 15, int(kzone2D_rightEdge_mag) + VISION), (int(kzone2D_topEdge_mag) + VISION + 10 * 15, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2) # 下
+    # cv2.line(img, (0 + VISION - 10 * 15, 0 + VISION), (0 + VISION - 10 * 15, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2) # 左
+    # cv2.line(img, (int(kzone2D_topEdge_mag) + VISION + 10 * 15, 0 + VISION), (int(kzone2D_topEdge_mag) + VISION + 10 * 15, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2) # 右
+    # cv2.line(img, (0 + VISION - 10 * 15, int(kzone2D_rightEdge_mag / 3) + VISION), (int(kzone2D_topEdge_mag) + VISION + 10 * 15, int(kzone2D_rightEdge_mag / 3) + VISION), 255, thickness = 2)
+    # cv2.line(img, (0 + VISION - 10 * 15, int(kzone2D_rightEdge_mag * 2/3) + VISION), (int(kzone2D_topEdge_mag) + VISION + 10 * 15, int(kzone2D_rightEdge_mag * 2/3) + VISION), 255, thickness = 2)
+    # cv2.line(img, (int((kzone2D_topEdge_mag + 20 * 15)/ 3) + VISION - 10 * 15, 0 + VISION), (int((kzone2D_topEdge_mag + 20 * 15)/ 3) + VISION - 10 * 15, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
+    # cv2.line(img, (int((kzone2D_topEdge_mag + 20 * 15) * 2/3) + VISION - 10 * 15, 0 + VISION), (int((kzone2D_topEdge_mag + 20 * 15) * 2/3) + VISION - 10 * 15, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
+
+    cv2.line(img, (0 + VISION, 0 + VISION), (int(kzone2D_topEdge_mag) + VISION, 0 + VISION), 255, thickness = 2)
+    cv2.line(img, (0 + VISION, int(kzone2D_rightEdge_mag) + VISION), (int(kzone2D_topEdge_mag) + VISION, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
+    cv2.line(img, (0 + VISION, 0 + VISION), (0 + VISION, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
+    cv2.line(img, (int(kzone2D_topEdge_mag) + VISION, 0 + VISION), (int(kzone2D_topEdge_mag) + VISION, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
+    cv2.line(img, (0 + VISION, int(kzone2D_rightEdge_mag / 3) + VISION), (int(kzone2D_topEdge_mag) + VISION, int(kzone2D_rightEdge_mag / 3) + VISION), 255, thickness = 2)
+    cv2.line(img, (0 + VISION, int(kzone2D_rightEdge_mag * 2/3) + VISION), (int(kzone2D_topEdge_mag) + VISION, int(kzone2D_rightEdge_mag * 2/3) + VISION), 255, thickness = 2)
+    cv2.line(img, (int(kzone2D_topEdge_mag / 3) + VISION, 0 + VISION), (int(kzone2D_topEdge_mag / 3) + VISION, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
+    cv2.line(img, (int(kzone2D_topEdge_mag * 2/3) + VISION, 0 + VISION), (int(kzone2D_topEdge_mag * 2/3) + VISION, int(kzone2D_rightEdge_mag) + VISION), 255, thickness = 2)
     intersection = get_2D_intersection(kzone2DPoints, worlds)
+
+    kzone2DPoints_noOfset = kzone2DPoints / 15
+    kzone2DPoints_noOfset[:, 1] -= 90
+    kzone2DPoints_noOfset = kzone2DPoints_noOfset * 15
+    intersection_noOfset = get_2D_intersection(kzone2DPoints_noOfset, worlds)
+
+    print("幹你娘",intersection)
     topVec = kzone2DPoints[0] - kzone2DPoints[3] # 2D kzone X axis
     leftVec = kzone2DPoints[2] - kzone2DPoints[3] # 2D kzone Y axis
+
+    # 這是給本壘板上方的好球帶用的
     intersection2Original_vec = np.array(intersection) - kzone2DPoints[3]
     
-    dot_product = np.dot(topVec, intersection2Original_vec)
+    dot_product_top = np.dot(topVec, intersection2Original_vec)
+    dot_product_left = np.dot(leftVec, intersection2Original_vec)
     norm_topVec = np.linalg.norm(topVec)
     norm_intersection2Original_vec = np.linalg.norm(intersection2Original_vec)
-    cos_theta = dot_product / (norm_topVec * norm_intersection2Original_vec)
+    cos_theta = dot_product_top / (norm_topVec * norm_intersection2Original_vec)
     theta_rad = np.arccos(cos_theta)
-    center = (int(norm_intersection2Original_vec * np.cos(theta_rad)) + 200, int(norm_intersection2Original_vec * np.sin(theta_rad)) + 200) # 進壘點 X Y 座標
+    # print("intersection2Original_vec", intersection2Original_vec)
+    # print("dot_product_top: ", dot_product_top)
+    # print("dot_product_left: ", dot_product_left)
+    # print("cos_theta", cos_theta)
+    # print("theta_rad: ", theta_rad)
+    # print("norm_intersection2Original_vec: ", norm_intersection2Original_vec)
+    # print("int(norm_intersection2Original_vec * np.cos(theta_rad)): ", int(norm_intersection2Original_vec * np.cos(theta_rad)))
+    # print("-int(norm_intersection2Original_vec * np.cos(theta_rad)): ", -int(norm_intersection2Original_vec * np.cos(theta_rad)))
+    # print("-int(norm_intersection2Original_vec * np.cos(theta_rad)) + VISION: ", -int(norm_intersection2Original_vec * np.cos(theta_rad)) + VISION)
+    # print("ori: ", 0 + VISION)
+    if(dot_product_top > 0 and dot_product_left > 0):
+        # 第一象限
+        center = (int(norm_intersection2Original_vec * np.cos(theta_rad)) + VISION, int(norm_intersection2Original_vec * np.sin(theta_rad)) + VISION) # 進壘點 X Y 座標
+    elif(dot_product_top > 0 and dot_product_left < 0):
+        # 第四象限
+        center = (int(norm_intersection2Original_vec * np.cos(theta_rad)) + VISION, -int(norm_intersection2Original_vec * np.sin(theta_rad)) + VISION) # 進壘點 X Y 座標
+    elif(dot_product_top < 0 and dot_product_left > 0):
+        # 第二象限
+        center = (int(norm_intersection2Original_vec * np.cos(theta_rad)) + VISION, int(norm_intersection2Original_vec * np.sin(theta_rad)) + VISION) # 進壘點 X Y 座標
+    elif(dot_product_top < 0 and dot_product_left < 0):
+        # 第三象限
+        center = (int(norm_intersection2Original_vec * np.cos(theta_rad)) + VISION, -int(norm_intersection2Original_vec * np.sin(theta_rad)) + VISION) # 進壘點 X Y 座標
+
     print("!!center!!: ", center)
     cv2.circle(img, center, radius = int(kzone2D_rightEdge_mag * 0.01), color = 255, thickness = 2)
-
+    img = cv2.resize(img, (0, 0), fx=1/2, fy=1/2)
     cv2.imshow('kzone2D_visualize', img) 
     cv2.waitKey(0)            
     cv2.destroyAllWindows()      
 
-    return tuple(x / 15 for x in intersection), tuple(x / 15 for x in center)
+    return tuple(x / 15 for x in intersection_noOfset), tuple(x / 15 for x in intersection), tuple((x - VISION) / 15 for x in center)
 
 
 def get_2D_intersection(kzone2DPoints, trajectory):
@@ -523,9 +576,12 @@ def get_2D_intersection(kzone2DPoints, trajectory):
     vec2 = kzone2DPoints[1] - kzone2DPoints[2]
     normal_vec = np.cross(vec1, vec2)
 
+    parallelMove = np.array([kzone2DPoints[0][0], kzone2DPoints[0][1] + 2000, kzone2DPoints[0][2]])
     # Ax + By + Cz + D = 0
     A, B, C = normal_vec
+
     D = -np.dot(normal_vec, kzone2DPoints[0])
+    
     print("A, B, C, D:", A, B, C, D)
     N = len(trajectory)
     t = np.linspace(0, 1, N)  # 進度條
@@ -611,6 +667,12 @@ def reProjection(world):
 
 def reProjectionROI(kzone2DPoints, video_path9920, video_path6808):
     # img = cv2.imread('frameReprojection.png')
+
+    kzone2DPoints = kzone2DPoints.copy()
+    kzone2DPoints[0][0] -= 10
+    kzone2DPoints[1][0] -= 10
+    kzone2DPoints[2][0] += 10
+    kzone2DPoints[3][0] += 10
 
     # get first frame of video
     cap6808 = cv2.VideoCapture(video_path6808)

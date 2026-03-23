@@ -9,6 +9,7 @@ from get_ballPix_coors import get_ballPix_coors_Background
 from scipy.signal import savgol_filter
 import cv2
 import board
+from scipy.interpolate import splprep, splev
 ###
 # u = np.linspace(0, 2 * np.pi, 20)
 # v = np.linspace(0, np.pi, 20)
@@ -24,13 +25,25 @@ def plot_sphere(ax, center, radius):
     z = center[2] + radius * np.outer(np.ones_like(u), np.cos(v))
     ax.plot_surface(x, y, z, color='white', edgecolor='gray', alpha=0.3)
 
+def insertMiddle(pix_coors):    
+    midpoints = ((pix_coors[:-1] + pix_coors[1:]) / 2).astype(int) # 計算相鄰兩點之間的中點
+    interp = np.empty((pix_coors.shape[0]*2 - 1, 2))
+    interp[0::2] = pix_coors          # 原始點放在偶數 index
+    interp[1::2] = midpoints          # 中點放在奇數 index
+    return interp
+
 def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
     cornerPixel9920 = np.array([cornerPixel[0], cornerPixel[1]])
     cornerPixel6808 = np.array([cornerPixel[2], cornerPixel[3]])
-    pix_coors_9920 = get_ballPix_coors_Background(video_path9920, cornerPixel9920)
-    pix_coors_6808 = get_ballPix_coors_Background(video_path6808, cornerPixel6808)
-    print("pix_coors_9920:", pix_coors_9920)
-    print("pix_coors_6808:", pix_coors_6808)
+    pix_coors_9920 = get_ballPix_coors_YOLO(video_path9920, cornerPixel9920)
+    pix_coors_6808 = get_ballPix_coors_YOLO(video_path6808, cornerPixel6808)
+    # pix_coors_9920 = insertMiddle(pix_coors_9920)
+    # pix_coors_6808 = insertMiddle(pix_coors_6808)
+    # pix_coors_9920 = insertMiddle(pix_coors_9920)
+    # pix_coors_6808 = insertMiddle(pix_coors_6808)
+    # print("pix_coors_9920:", pix_coors_9920)
+    # print("pix_coors_6808:", pix_coors_6808)
+
     # get first frame of video
     cap9920 = cv2.VideoCapture(video_path9920)
     cap6808 = cv2.VideoCapture(video_path6808)
@@ -39,8 +52,10 @@ def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
     cap9920.release()
     cap6808.release()
 
-    offsetId, err = time_sync(frame9920, frame6808, pix_coors_9920, pix_coors_6808)
-    print("offsetId", offsetId)
+    err = time_sync(frame9920, frame6808, pix_coors_9920, pix_coors_6808)
+    # if(err == -99):
+    #     return -99
+    # print("offsetId", offsetId)
     print("err:", err)
 
     # for pix_coor_9920 in pix_coors_9920:
@@ -56,11 +71,11 @@ def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
     # cv2.imshow("6808 raw trajectory", frame6808)
     # cv2.waitKey(0)
     # cv2.destroyAllWindows()
-    # err = 6
-    if(offsetId == "9920"):
+    # err = -7
+    if(err >= 0):
         pix_coors_9920 = pix_coors_9920[err:]
-    elif(offsetId == "6808"):
-        pix_coors_6808 = pix_coors_6808[err:]
+    elif(err < 0):
+        pix_coors_6808 = pix_coors_6808[abs(err):]
     # pix_coors_6808 = pix_coors_6808[2:]
     size_9920 = pix_coors_9920.shape[0]
     size_6808 = pix_coors_6808.shape[0]
@@ -86,8 +101,8 @@ def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
         worlds.append(world)
         imgPts9920, imgPts6808 = board.reProjection(world[0])
 
-        cv2.circle(frame9920, (i[0], i[1]), 40, (255, 255, 255), -1)
-        cv2.circle(frame6808, (i[2], i[3]), 40, (255, 255, 255), -1)
+        cv2.circle(frame9920, (int(i[0]), int(i[1])), 40, (255, 255, 255), -1)
+        cv2.circle(frame6808, (int(i[2]), int(i[3])), 40, (255, 255, 255), -1)
 
         cv2.circle(frame9920, tuple(np.int32(imgPts9920[0][0])), 40, (255, 0, 255), 10)
         cv2.circle(frame6808, tuple(np.int32(imgPts6808[0][0])), 40, (255, 0, 255), 10)
@@ -115,7 +130,7 @@ def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
         # plot_sphere(ax, (x, y, z), radius)
         ax.text(float(x), float(y), float(z), f'({float(x):.2f}, {float(y):.2f}, {float(z):.2f})',fontsize=8, color='black')
 
-    ###### filter
+    ##### filter
     X = np.array(X)
     Y = np.array(Y)
     Z = np.array(Z)
@@ -123,8 +138,8 @@ def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
     dY = np.diff(Y)  
     dZ = np.diff(Z)      
     speed = np.sqrt(dX**2 + dY**2 + dZ**2)
-    thresholdH = np.quantile(speed, 0.75)
-    thresholdL = np.quantile(speed, 0.15)
+    thresholdH = np.quantile(speed, 0.7)
+    thresholdL = np.quantile(speed, 0.3)
     maskH = speed < thresholdH
     maskL = speed > thresholdL
     mask = maskH & maskL
@@ -135,20 +150,32 @@ def baseball3D(video_path9920, video_path6808, cornerPixel, ax):
     speed = np.sqrt(dX**2 + dY**2 + dZ**2)
     speedAvg = sum(speed) / len(speed)
     print('speed: ', speed)
-    print('speedAvg: ', speedAvg)
+    print('speedAvg(km/hr): ', speedAvg * 8.64)
 
     mask = np.insert(mask, 0, False)  # 把 False 插在開頭
     X = X[mask] 
     Y = Y[mask]
     Z = Z[mask]
 
-    window = 3 
+    window = 3
     X_smooth = savgol_filter(X, window_length=window, polyorder=2)
     Y_smooth = savgol_filter(Y, window_length=window, polyorder=2)
     Z_smooth = savgol_filter(Z, window_length=window, polyorder=2)
-    ######
-    ax.scatter(X_smooth, Y_smooth, Z_smooth, c=Z, cmap='viridis', marker='o', alpha=0.8)
+    #####
+    # ax.scatter(X_smooth, Y_smooth, Z_smooth, c=Z, cmap='viridis', marker='o', alpha=0.8)
     worlds = np.column_stack((X_smooth, Y_smooth, Z_smooth))
+    # worlds = np.column_stack((X, Y, Z))
     # ax.scatter(X, Y, Z, c=Z, cmap='viridis', marker='o', alpha=0.8)  
-    
-    return worlds
+
+    # 建立 3D spline
+    # s=0 幾乎穿過所有點；s 越大越平滑
+    tck, u = splprep([X_smooth, Y_smooth, Z_smooth], s=5)
+
+    # 產生更密的參數點
+    u_fine = np.linspace(0, 1, 300)
+
+    # 算出平滑後曲線
+    x_fit, y_fit, z_fit = splev(u_fine, tck)
+    ax.plot(x_fit, y_fit, z_fit, color='red', linewidth=4, label='Smooth curve')
+
+    return worlds, speedAvg*8.64

@@ -16,7 +16,7 @@ obj_points = []
 img_points = []  
 
 # you have to change to "images4_camera (1)/*.jpg" if necessary
-images = glob.glob("images4_camera_6808/*.jpg")
+images = glob.glob("images4_camera_9920/*.jpg")
 if not images:
     print("❌ 没有找到任何图片，请检查 images4 目录！")
 else:
