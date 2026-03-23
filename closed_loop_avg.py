@@ -18,6 +18,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import cv2
 import csv
+import msvcrt
 from apriltag_test import calibrate
 import math
 # result = subprocess.Popen(
@@ -100,6 +101,37 @@ def log_value(nowX, nowY, motorX_params, motorY_params, speedAvg, filename, late
             speedAvg
         ])
 
+def keep_second_half(video_path):
+
+    cap = cv2.VideoCapture(video_path)
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
+
+    half_frame = int(total_frames * 0.65) 
+
+    # 跳到一半
+    cap.set(cv2.CAP_PROP_POS_FRAMES, half_frame)
+
+    temp_path = video_path + "_temp.mp4"
+
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    out = cv2.VideoWriter(temp_path, fourcc, fps, (width, height))
+
+    while True:
+        ret, frame = cap.read()
+        if not ret:
+            break
+        out.write(frame)
+
+    cap.release()
+    out.release()
+
+    # 覆蓋原影片
+    os.remove(video_path)
+    os.rename(temp_path, video_path)
 
 # 啟動 server.exe，開啟 stdout 和 stdin
 proc = subprocess.Popen(
@@ -170,6 +202,7 @@ def start_reording():
     print(subdirs)
 
     latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
+
     #####
     # make sure that there are two essential files 'cam1.mp4' and 'cam2.mp4'
     folder = os.path.join("data", latest_folder_name)
@@ -178,13 +211,9 @@ def start_reording():
     need2 = os.path.join(folder, "cam2.MP4")
 
     if not (os.path.isfile(need1) and os.path.isfile(need2)):
-        # time.sleep(1)
-        # ssh_run_command('192.168.50.11', 22, 'ICMEMS_2', '4259642597', 'bash run_client.sh')
-        # time.sleep(5)
-        # ssh_run_command('192.168.50.12', 22, 'vince', 'Qwe70504', 'bash run_client.sh')    
-        # time.sleep(15)
-        
-        trigger_redlight_launcher(True)
+        proc.stdin.write("download\n")
+        proc.stdin.flush()
+        time.sleep(5) 
         return "cam1/cam2 尚未齊全，停止本次流程"
     #####
     
@@ -203,6 +232,8 @@ def start_reording():
     ### 此為假定，待修正
     video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
     video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
+    keep_second_half(video_path9920)
+    keep_second_half(video_path6808)
     #########################################################
 
     fig = plt.figure(figsize=(8, 6))
@@ -214,89 +245,92 @@ def start_reording():
    
     plt.savefig("output.png")   # 存成圖檔
     plt.close()
-    intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
+    intersectionWorld_arrive_noOffset, intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
     
-    ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
-    ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
-    speed.append(speedAvg)
+    key = msvcrt.getch()
+    if key == b'c':
+        ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
+        ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
+        speed.append(speedAvg)
 
-    print("BallX.npy 內容", ballX)   
-    print("BallY.npy 內容", ballY)
-    print("speed.npy 內容", speed)
+        print("BallX.npy 內容", ballX)   
+        print("BallY.npy 內容", ballY)
+        print("speed.npy 內容", speed)
 
-    plc = pymcprotocol.Type3E()
-    plc.connect("192.168.50.18", 5001)
+        plc = pymcprotocol.Type3E()
+        plc.connect("192.168.50.18", 5001)
 
-    # read the xy position of motor
-    dataX = plc.batchread_wordunits("SD5502", 1)
-    motorX_params = dataX[0]
-    dataY = plc.batchread_wordunits("SD5542", 1)
-    motorY_params = dataY[0]
+        # read the xy position of motor
+        dataX = plc.batchread_wordunits("SD5502", 1)
+        motorX_params = dataX[0]
+        dataY = plc.batchread_wordunits("SD5542", 1)
+        motorY_params = dataY[0]
 
-    log_value(centerCross2D[0], centerCross2D[1], motorX_params, motorY_params, speedAvg, "data_log.csv", latest_folder_name)
+        log_value(centerCross2D[0], centerCross2D[1], motorX_params, motorY_params, speedAvg, "data_log.csv", latest_folder_name)
 
-    np.save(r"D:\GoProMocapSystem_Released\server\ballX.npy", ballX)
-    np.save(r"D:\GoProMocapSystem_Released\server\ballY.npy", ballY)
-    np.save(r"D:\GoProMocapSystem_Released\server\speed.npy", speed)
+        np.save(r"D:\GoProMocapSystem_Released\server\ballX.npy", ballX)
+        np.save(r"D:\GoProMocapSystem_Released\server\ballY.npy", ballY)
+        np.save(r"D:\GoProMocapSystem_Released\server\speed.npy", speed)
 
-    ax.set_xlabel('X')
-    ax.set_ylabel('Y')
-    ax.set_zlabel('Z')
-    ax.set_title('3D Scatter Plot')
-    # ballX=[42.06666666666667, 73.86666666666666, 74.06666666666666]
-    
-    # ballY=[-10.133333333333333, 4.2
-    # 66666666666667, -22.866666666666667]
-    if(len(ballX) == 1):
-        print("!!")
-        # plc = pymcprotocol.Type3E()
-        # plc.connect("192.168.50.18", 5001)
-
-        # # read the xy position of motor
-        # dataX = plc.batchread_wordunits("SD5502", 1)
-        # motorX_params = dataX[0]
-        # dataY = plc.batchread_wordunits("SD5542", 1)
-        # motorY_params = dataY[0]
-
-        # print("motorX_params: ", motorX_params)
-        # print("motorY_params: ", motorY_params)
+        ax.set_xlabel('X')
+        ax.set_ylabel('Y')
+        ax.set_zlabel('Z')
+        ax.set_title('3D Scatter Plot')
+        # ballX=[42.06666666666667, 73.86666666666666, 74.06666666666666]
         
-        # 速度修正
-        targetSpeed = 100
-        ds = targetSpeed - (sum(speed) / len(speed))
-        Kps = 0.5
-        send_speed_to_esp8266(ds * Kps)
+        # ballY=[-10.133333333333333, 4.2
+        # 66666666666667, -22.866666666666667]
+        if(len(ballX) == 1):
+            print("!!")
+            # plc = pymcprotocol.Type3E()
+            # plc.connect("192.168.50.18", 5001)
 
-        # 計算目標號位以及差值
-        No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2) # 五號
-        No1_coor = (0, 10) # 一號
-        No3_coor = (40, 10)
-        No9_coor = (40, 50)
-        No7_coor = (0, 50)
+            # # read the xy position of motor
+            # dataX = plc.batchread_wordunits("SD5502", 1)
+            # motorX_params = dataX[0]
+            # dataY = plc.batchread_wordunits("SD5542", 1)
+            # motorY_params = dataY[0]
 
-        dx = No7_coor[0] - (sum(ballX) / len(ballX))
-        dy = No7_coor[1] - (sum(ballY) / len(ballY))
+            # print("motorX_params: ", motorX_params)
+            # print("motorY_params: ", motorY_params)
+            
+            # 速度修正
+            targetSpeed = 100
+            ds = targetSpeed - (sum(speed) / len(speed))
+            Kps = 0.5
+            send_speed_to_esp8266(ds * Kps)
 
-        ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊移(assume馬達往右、上為正) ###
-        KpX = 6
-        KpY = 1.5
-        motorX_params = motorX_params + KpX * dx
-        motorY_params = motorY_params - KpY * dy
+            # 計算目標號位以及差值
+            No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2) # 五號
+            No1_coor = (0, 10) # 一號
+            No3_coor = (40, 10)
+            No9_coor = (40, 50)
+            No7_coor = (0, 50)
 
-        # write the new value to PLC
-        plc.batchwrite_wordunits("D102", [int(motorX_params)])
-        plc.batchwrite_wordunits("D202", [int(motorY_params)])
+            dx = No9_coor[0] - (sum(ballX) / len(ballX))
+            dy = No9_coor[1] - (sum(ballY) / len(ballY))
 
-        # 馬達點位調整
-        plc.batchwrite_bitunits("M700", [1])
-        time.sleep(1)  # 給 PLC 足夠掃描時間
-        plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
-        time.sleep(1)
-        os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
-        os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
-        os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
+            ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊c移(assume馬達往右、上為正) ###
+            KpX = 6
+            KpY = 1.5
+            motorX_params = motorX_params + KpX * dx
+            motorY_params = motorY_params - KpY * dy
 
-    trigger_redlight_launcher(True)
+            # write the new value to PLC
+            plc.batchwrite_wordunits("D102", [int(motorX_params)])
+            plc.batchwrite_wordunits("D202", [int(motorY_params)])
+
+            # 馬達點位調整
+            plc.batchwrite_bitunits("M700", [1])
+            time.sleep(1)  # 給 PLC 足夠掃描時間
+            plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+            time.sleep(1)
+            os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
+            os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
+            os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
+            trigger_redlight_launcher(True)
+    else:
+        trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
 
 def ssh_run_command(host, port, user, password, command):
@@ -327,7 +361,7 @@ if __name__ == '__main__':
     time.sleep(5)
     ssh_run_command('192.168.50.11', 22, 'ICMEMS_2', '4259642597', 'bash run_client.sh')
     time.sleep(5)
-    ssh_run_command('192.168.50.12', 22, 'vince', 'Qwe70504', 'bash run_client.sh')    
+    ssh_run_command('192.168.50.12', 22, 'vince', 'Qwe70504', 'bash run_client.sh')
     time.sleep(15)
 
     trigger_redlight_launcher(True)

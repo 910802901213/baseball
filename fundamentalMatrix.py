@@ -183,9 +183,9 @@ def time_sync(Img9920, Img6808, pixs9920, pixs6808):
     cv2.imshow("RANSAC inliers", outimage)
     cv2.waitKey(0)
 
-#     E = np.array(  [[    0.10544  ,   0.34361  ,  -0.31374],
-#  [   -0.28821   , -0.14614  ,  -0.59517],
-#  [    0.26329   ,  0.48437  , -0.098969]])
+#     E = np.array(  [[    0.14603  ,   0.36068  ,   -0.2303],
+#  [   -0.11492  ,  -0.10299 ,   -0.66544],
+#  [    0.24271  ,   0.51956 , -0.0087654]])
     # this transform is to match undistortPoints() format
     pixs9920 = pixs9920.reshape(-1, 1, 2).astype(np.float32)
     pixs6808 = pixs6808.reshape(-1, 1, 2).astype(np.float32)
