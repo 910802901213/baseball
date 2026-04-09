@@ -46,7 +46,7 @@ esp_beamMotor_ip = "192.168.50.13"  # beamMotor
 def trigger_redlight_launcher(on=True):
     path = "/m100on" if on else "/m100off"
     try:
-        r = requests.get(f"http://{esp_redlight_ip}{path}", timeout=5)
+        r = requests.get(f"http://{esp_redlight_ip}{path}", timeout=10)
         if r.status_code == 200:
             print(f"✅ 紅綠燈已 {'啟動' if on else '關閉'}")
         else:
@@ -261,8 +261,10 @@ if __name__ == '__main__':
         trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]))
         time.sleep(5)
         trigger_redlight_launcher(True)
+        # time.sleep(25)
+        # trigger_redlight_launcher(False)
         break
-        time.sleep(2)
+        
         
     # print("start to monitor http")
     # app.run(host='0.0.0.0', port=5000)

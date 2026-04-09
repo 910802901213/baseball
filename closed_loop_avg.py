@@ -1,5 +1,6 @@
 import sys
 sys.path.append("C:\\Users\\samuel901213\\Downloads\\PythonComputerVision-6-CameraCalibration-master\\PythonComputerVision-6-CameraCalibration-master")
+sys.path.append("C:\\Users\\samuel901213\\Downloads\\Beam")
 
 import time
 import threading
@@ -21,6 +22,12 @@ import csv
 import msvcrt
 from apriltag_test import calibrate
 import math
+import re
+import beamDetect 
+from scipy.spatial.transform import Rotation as R
+import photoshop
+from pathlib import Path
+from PIL import Image
 # result = subprocess.Popen(
 #                 [r"D:\GoProMocapSystem_Released\server\time_sync.exe"],
 #                 stdout=subprocess.PIPE,
@@ -36,6 +43,7 @@ import math
 # plc.connect("192.168.50.18", 5001)
 esp_redlight_ip = "192.168.50.88"  # 紅綠燈控制裝置
 esp8266_ip = "192.168.50.90"
+esp_beamMotor_ip = "192.168.50.13"  # beamMotor
 
 def send_speed_to_esp8266(speed):
     print(f"\U0001F4E1 傳送球速 {speed} km/hr 給 ESP8266")
@@ -59,6 +67,40 @@ def trigger_redlight_launcher(on=True):
             print(f"⚠️ 紅綠燈控制失敗，HTTP 狀態碼: {r.status_code}")
     except Exception as e:
         print(f"❌ 紅綠燈控制錯誤：{e}")
+
+def trigger_beam_motor(data):
+    # data type should be np.array
+    path = ",".join(data.astype(str).tolist())  # make array to string
+    print("path: ", path)
+    while(True):
+        try:
+            # 確保在 IP 和 path 之間加上斜線 /
+            r = requests.get(f"http://{esp_beamMotor_ip}/{path}", timeout=10)
+            if r.status_code == 200:
+                print(f"✅ beamMotor已啟動")
+                break
+            else:
+                print(f"⚠️ beamMotor控制失敗，HTTP 狀態碼: {r.status_code}")
+        except Exception as e:
+            print(f"❌ beamMotor控制錯誤:{e}") 
+
+def XYZ2YZ(rx, ry, rz): # rx, ry, rz (deg)
+    rx, ry, rz = np.radians([rx, ry, rz]) # deg -> rad
+    r_original = R.from_euler('zyx', [rz, ry, rx])
+    zyz_angles_rad = r_original.as_euler('zyz', degrees=False)
+    zyz_angles_deg = np.degrees(zyz_angles_rad) # rad -> deg
+    
+    return zyz_angles_deg # deg
+
+def get_deg_fromPATH(path):
+    match = re.search(r'X(\d+)Y(\d+)Z(\d+)', str(path))
+    if match:
+        X_deg = match.group(1)
+        Y_deg = match.group(2)
+        Z_deg = match.group(3)
+        print("X_deg:", X_deg, "Y_deg:", Y_deg, "Z_deg:", Z_deg)
+    
+    return X_deg, Y_deg, Z_deg  
 
 def get_latest_folder_by_ctime(path):
     # this function can get the lastest folder in path
@@ -245,10 +287,46 @@ def start_reording():
    
     plt.savefig("output.png")   # 存成圖檔
     plt.close()
-    intersectionWorld_arrive_noOffset, intersectionWorld_arrive, centerCross2D = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
+    intersectionWorld_arrive_noOffset, intersectionWorld_arrive, centerCross2D, key  = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
     
-    key = msvcrt.getch()
-    if key == b'c':
+    # key = msvcrt.getch()
+################################################################################
+    compared = photoshop.photoshop() 
+    # compared = str("C:\\Users\\samuel901213\\Downloads\\S__41328728.jpg")
+
+    # 開啟圖片
+    img = Image.open(compared)
+
+    # 取得原始尺寸
+    width, height = img.size
+
+    # 計算 1/6 大小
+    new_width = width // 1
+    new_height = height // 1
+
+    # 縮放並覆蓋存檔
+    # img.resize((new_width, new_height)).save(compared)
+    resized_img = img.resize((new_width, new_height))
+    resized_img.save(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
+    compared = str(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
+
+    # compared = r"C:\Users\samuel901213\Downloads\fk\f12\beamcaptured_image.jpg"
+    _, similarityMax_imgpath = beamDetect.similarityMax(compared)
+    X_deg, Y_deg, Z_deg = get_deg_fromPATH(similarityMax_imgpath)
+    matchPath = Path(f"D:/render_10degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
+    print(matchPath)
+    # matchPath = Path(f"C:/Users/samuel901213/Downloads/beam/render_20degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
+    X_deg, Y_deg, Z_deg = int(X_deg), int(Y_deg), int(Z_deg)
+    img = cv2.imread(str(matchPath)) 
+    cv2.imshow('Match', img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
+    print(f"zyz_angles_deg : {zyz_angles_deg}")
+    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]))
+    time.sleep(5)
+################################################################################
+    if key == ord('c'):
         ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
         ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
         speed.append(speedAvg)
@@ -281,6 +359,7 @@ def start_reording():
         # ballY=[-10.133333333333333, 4.2
         # 66666666666667, -22.866666666666667]
         if(len(ballX) == 1):
+            trigger_redlight_launcher(True)
             print("!!")
             # plc = pymcprotocol.Type3E()
             # plc.connect("192.168.50.18", 5001)
@@ -307,8 +386,8 @@ def start_reording():
             No9_coor = (40, 50)
             No7_coor = (0, 50)
 
-            dx = No9_coor[0] - (sum(ballX) / len(ballX))
-            dy = No9_coor[1] - (sum(ballY) / len(ballY))
+            dx = No3_coor[0] - (sum(ballX) / len(ballX))
+            dy = No3_coor[1] - (sum(ballY) / len(ballY))
 
             ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊c移(assume馬達往右、上為正) ###
             KpX = 6
@@ -328,7 +407,8 @@ def start_reording():
             os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
             os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
             os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
-            trigger_redlight_launcher(True)
+
+            # trigger_redlight_launcher(True)
     else:
         trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
@@ -363,7 +443,42 @@ if __name__ == '__main__':
     time.sleep(5)
     ssh_run_command('192.168.50.12', 22, 'vince', 'Qwe70504', 'bash run_client.sh')
     time.sleep(15)
+########################################################################
+    compared = photoshop.photoshop() 
+    # compared = str("C:\\Users\\samuel901213\\Downloads\\S__41328728.jpg")
 
+    # 開啟圖片
+    img = Image.open(compared)
+
+    # 取得原始尺寸
+    width, height = img.size
+
+    # 計算 1/6 大小
+    new_width = width // 1
+    new_height = height // 1
+
+    # 縮放並覆蓋存檔
+    # img.resize((new_width, new_height)).save(compared)
+    resized_img = img.resize((new_width, new_height))
+    resized_img.save(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
+    compared = str(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
+
+    # compared = r"C:\Users\samuel901213\Downloads\fk\f12\beamcaptured_image.jpg"
+    _, similarityMax_imgpath = beamDetect.similarityMax(compared)
+    X_deg, Y_deg, Z_deg = get_deg_fromPATH(similarityMax_imgpath)
+    matchPath = Path(f"D:/render_10degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
+    print(matchPath)
+    # matchPath = Path(f"C:/Users/samuel901213/Downloads/beam/render_20degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
+    X_deg, Y_deg, Z_deg = int(X_deg), int(Y_deg), int(Z_deg)
+    img = cv2.imread(str(matchPath)) 
+    cv2.imshow('Match', img)
+    cv2.waitKey(0)
+    cv2.destroyAllWindows()
+    zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
+    print(f"zyz_angles_deg : {zyz_angles_deg}")
+    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]))
+    time.sleep(5)
+   ######################################################################### 
     trigger_redlight_launcher(True)
     print("start to monitor http")
     app.run(host='0.0.0.0', port=5000)

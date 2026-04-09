@@ -15,6 +15,7 @@ import os
 import baseball3D
 import board
 import matplotlib.pyplot as plt
+
 # result = subprocess.Popen(
 #                 [r"D:\GoProMocapSystem_Released\server\time_sync.exe"],
 #                 stdout=subprocess.PIPE,
@@ -33,13 +34,31 @@ esp_redlight_ip = "192.168.50.88"  # 紅綠燈控制裝置
 def trigger_redlight_launcher(on=True):
     path = "/m100on" if on else "/m100off"
     try:
-        r = requests.get(f"http://{esp_redlight_ip}{path}", timeout=5)
+        r = requests.get(f"http://{esp_redlight_ip}{path}", timeout=10)
         if r.status_code == 200:
             print(f"✅ 紅綠燈已 {'啟動' if on else '關閉'}")
         else:
             print(f"⚠️ 紅綠燈控制失敗，HTTP 狀態碼: {r.status_code}")
     except Exception as e:
         print(f"❌ 紅綠燈控制錯誤：{e}")
+
+# arduino_port = "COM3"   
+# baud_rate = 9600
+
+# def trigger_redlight_launcher(on=True):
+#     cmd = "1\n" if on else "0\n"
+
+#     try:
+#         with serial.Serial(arduino_port, baud_rate, timeout=2) as ser:
+#             time.sleep(2)  # Arduino reset 後等它穩定
+#             ser.write(cmd.encode("utf-8"))
+#             ser.flush()
+
+#             response = ser.readline().decode("utf-8", errors="ignore").strip()
+#             print(f"Arduino 回覆: {response}")
+#     except Exception as e:
+#         print(f"❌ 序列通訊錯誤: {type(e).__name__}: {e}")
+# === 紅綠燈控制函式 ===
 
 def get_latest_folder_by_ctime(path):
     # this function can get the lastest folder in path
@@ -133,17 +152,6 @@ def get_latest_folder_by_ctime(path):
     # # motorX_params = motorX_params + Kp * dx
     # # motorY_params = motorY_params - Kp * dy
     #---------------------------------------------------------------------------------------------------------
-
-
-
-
-
-def ssh_run_command(host, port, user, password, command):
-    ssh = paramiko.SSHClient()
-    ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
-    ssh.connect(hostname=host, port=port, username=user, password=password)
-    ssh.exec_command(command)
-    ssh.close()
 
 # # 背景執行緒：持續讀取 stdout
 # def read_output():
