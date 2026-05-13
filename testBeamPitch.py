@@ -26,6 +26,7 @@ import photoshop
 import cv2
 from pathlib import Path
 from PIL import Image
+import serial
 
 # result = subprocess.Popen(
 #                 [r"D:\GoProMocapSystem_Released\server\time_sync.exe"],
@@ -53,6 +54,22 @@ def trigger_redlight_launcher(on=True):
             print(f"⚠️ 紅綠燈控制失敗，HTTP 狀態碼: {r.status_code}")
     except Exception as e:
         print(f"❌ 紅綠燈控制錯誤：{e}")
+
+baud_rate = 9600
+# def trigger_redlight_launcher(on=True, port="COM1"):
+#     cmd = "1\n" if on else "0\n"
+
+#     try:
+#         with serial.Serial(port, baud_rate, timeout=2) as ser:
+#             time.sleep(2)  # Arduino reset 後等它穩定
+#             ser.write(cmd.encode("utf-8"))
+#             ser.flush()
+
+#             response = ser.readline().decode("utf-8", errors="ignore").strip()
+#             print(f"Arduino 回覆: {response}")
+#     except Exception as e:
+#         print(f"❌ 序列通訊錯誤: {type(e).__name__}: {e}")
+
 
 def get_latest_folder_by_ctime(path):
     # this function can get the lastest folder in path
@@ -158,21 +175,39 @@ def ssh_run_command(host, port, user, password, command):
     ssh.exec_command(command)
     ssh.close()
 
-def trigger_beam_motor(data):
-    # data type should be np.array
-    path = ",".join(data.astype(str).tolist())  # make array to string
-    print("path: ", path)
-    while(True):
-        try:
-            # 確保在 IP 和 path 之間加上斜線 /
-            r = requests.get(f"http://{esp_beamMotor_ip}/{path}", timeout=10)
-            if r.status_code == 200:
-                print(f"✅ beamMotor已啟動")
-                break
-            else:
-                print(f"⚠️ beamMotor控制失敗，HTTP 狀態碼: {r.status_code}")
-        except Exception as e:
-            print(f"❌ beamMotor控制錯誤:{e}") 
+# 有線
+ser = serial.Serial("COM15", baud_rate, timeout=10)
+time.sleep(2)  # 只在一開始等一次
+def trigger_beam_motor(data, ser):
+    path = ",".join(data.astype(str).tolist())
+    print("path:", path)
+
+    try:
+        ser.write((path + "\n").encode("utf-8"))
+        ser.flush()
+
+        response = ser.readline().decode("utf-8", errors="ignore").strip()
+        print(f"Arduino 回覆: {response}")
+
+    except Exception as e:
+        print(f"❌ beamMotor控制錯誤: {type(e).__name__}: {e}")
+
+# def trigger_beam_motor(data, port="COM1"):
+#     # data type should be np.array
+#     path = ",".join(data.astype(str).tolist())  # make array to string
+#     print("path: ", path)
+
+#     try:
+#         with serial.Serial(port, baud_rate, timeout=10) as ser:
+#             time.sleep(2)  # Arduino / ESP reset 後等它穩定
+#             ser.write((path + "\n").encode("utf-8"))
+#             ser.flush()
+
+#             response = ser.readline().decode("utf-8", errors="ignore").strip()
+#             print(f"Arduino 回覆: {response}")
+
+#     except Exception as e:
+#         print(f"❌ beamMotor控制錯誤: {type(e).__name__}: {e}")
 
 def XYZ2YZ(rx, ry, rz): # rx, ry, rz (deg)
     rx, ry, rz = np.radians([rx, ry, rz]) # deg -> rad
@@ -258,7 +293,7 @@ if __name__ == '__main__':
         cv2.destroyAllWindows()
         zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
         print(f"zyz_angles_deg : {zyz_angles_deg}")
-        trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]))
+        trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]), ser)
         time.sleep(5)
         trigger_redlight_launcher(True)
         # time.sleep(25)

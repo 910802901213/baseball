@@ -11,4 +11,4 @@ def send_speed_to_esp8266(speed):
     except Exception as e:
         print(f"❌ 傳送失敗：{e}")
 
-send_speed_to_esp8266(60)
+send_speed_to_esp8266(100)

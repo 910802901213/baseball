@@ -28,6 +28,8 @@ from scipy.spatial.transform import Rotation as R
 import photoshop
 from pathlib import Path
 from PIL import Image
+import serial
+
 # result = subprocess.Popen(
 #                 [r"D:\GoProMocapSystem_Released\server\time_sync.exe"],
 #                 stdout=subprocess.PIPE,
@@ -68,21 +70,57 @@ def trigger_redlight_launcher(on=True):
     except Exception as e:
         print(f"❌ 紅綠燈控制錯誤：{e}")
 
-def trigger_beam_motor(data):
-    # data type should be np.array
-    path = ",".join(data.astype(str).tolist())  # make array to string
-    print("path: ", path)
-    while(True):
-        try:
-            # 確保在 IP 和 path 之間加上斜線 /
-            r = requests.get(f"http://{esp_beamMotor_ip}/{path}", timeout=10)
-            if r.status_code == 200:
-                print(f"✅ beamMotor已啟動")
-                break
-            else:
-                print(f"⚠️ beamMotor控制失敗，HTTP 狀態碼: {r.status_code}")
-        except Exception as e:
-            print(f"❌ beamMotor控制錯誤:{e}") 
+baud_rate = 9600
+# def trigger_redlight_launcher(on=True, port="COM1"):
+#     cmd = "1\n" if on else "0\n"
+
+#     try:
+#         with serial.Serial(port, baud_rate, timeout=2) as ser:
+#             time.sleep(2)  # Arduino reset 後等它穩定
+#             ser.write(cmd.encode("utf-8"))
+#             ser.flush()
+
+#             response = ser.readline().decode("utf-8", errors="ignore").strip()
+#             print(f"Arduino 回覆: {response}")
+#     except Exception as e:
+#         print(f"❌ 序列通訊錯誤: {type(e).__name__}: {e}")
+######
+# 無線
+# def trigger_beam_motor(data):
+#     # data type should be np.array
+#     path = ",".join(data.astype(str).tolist())  # make array to string
+#     print("path: ", path)
+#     while(True):
+#         try:
+#             # 確保在 IP 和 path 之間加上斜線 /
+#             r = requests.get(f"http://{esp_beamMotor_ip}/{path}", timeout=10)
+#             if r.status_code == 200:
+#                 print(f"✅ beamMotor已啟動")
+#                 break
+#             else:
+#                 print(f"⚠️ beamMotor控制失敗，HTTP 狀態碼: {r.status_code}")
+#         except Exception as e:
+#             print(f"❌ beamMotor控制錯誤:{e}") 
+######
+
+######
+# 有線
+ser = serial.Serial("COM15", baud_rate, timeout=10)
+time.sleep(2)  # 只在一開始等一次
+def trigger_beam_motor(data, ser):
+    path = ",".join(data.astype(str).tolist())
+    print("path:", path)
+
+    try:
+        ser.write((path + "\n").encode("utf-8"))
+        ser.flush()
+
+        response = ser.readline().decode("utf-8", errors="ignore").strip()
+        print(f"Arduino 回覆: {response}")
+
+    except Exception as e:
+        print(f"❌ beamMotor控制錯誤: {type(e).__name__}: {e}")
+######
 
 def XYZ2YZ(rx, ry, rz): # rx, ry, rz (deg)
     rx, ry, rz = np.radians([rx, ry, rz]) # deg -> rad
@@ -175,6 +213,93 @@ def keep_second_half(video_path):
     os.remove(video_path)
     os.rename(temp_path, video_path)
 
+def restart_python_program():
+    print("🔁 重新啟動整支 Python 程式")
+
+    python = sys.executable
+    os.execl(python, python, *sys.argv)
+
+def restart_server_and_clients():
+    global proc, stop_event, thread_read_output
+
+    print("🔁 重新啟動 server.exe + 兩台 client")
+
+    # 1. 停止讀取 stdout 的 thread
+    try:
+        stop_event.set()
+    except Exception:
+        pass
+
+    # 2. 關掉舊 server.exe
+    try:
+        if proc is not None:
+            print("🛑 關閉舊的 server.exe")
+
+            try:
+                if proc.stdin:
+                    proc.stdin.close()
+            except Exception:
+                pass
+
+            proc.terminate()
+
+            try:
+                proc.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                print("⚠️ server.exe 無法正常關閉，強制 kill")
+                proc.kill()
+                proc.wait()
+
+    except Exception as e:
+        print(f"⚠️ 關閉 server.exe 時發生錯誤: {e}")
+
+    time.sleep(2)
+
+    # 3. 重新啟動 server.exe
+    print("🚀 重新啟動 server.exe")
+
+    proc = subprocess.Popen(
+        ["D:\\GoProMocapSystem_Released\\server\\server.exe"],
+        cwd=r"D:\GoProMocapSystem_Released\server",
+        stdout=subprocess.PIPE,
+        stdin=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+        bufsize=1
+    )
+
+    # 4. 重新啟動 stdout thread
+    stop_event = threading.Event()
+    thread_read_output = threading.Thread(target=read_output, daemon=True)
+    thread_read_output.start()
+
+    time.sleep(5)
+
+    # 5. 重新 SSH 啟動兩台 client
+    print("🔌 重新 SSH 啟動 client 1")
+    ssh_run_command(
+        '192.168.50.11',
+        22,
+        'ICMEMS_2',
+        '4259642597',
+        'bash run_client.sh'
+    )
+
+    time.sleep(5)
+
+    print("🔌 重新 SSH 啟動 client 2")
+    ssh_run_command(
+        '192.168.50.12',
+        22,
+        'vince',
+        'Qwe70504',
+        'bash run_client.sh'
+    )
+
+    time.sleep(15)
+
+    print("✅ server.exe + clients 重啟完成")
+
 # 啟動 server.exe，開啟 stdout 和 stdin
 proc = subprocess.Popen(
     ["D:\\GoProMocapSystem_Released\\server\\server.exe"],       # 替換成你的 server.exe 路徑
@@ -228,7 +353,7 @@ def start_reording():
     time.sleep(2.5)
     proc.stdin.write("download\n")
     proc.stdin.flush()
-    time.sleep(5) 
+    time.sleep(10) 
 
     # proc.terminate()
     # proc.wait()
@@ -252,11 +377,25 @@ def start_reording():
     need1 = os.path.join(folder, "cam1.MP4")
     need2 = os.path.join(folder, "cam2.MP4")
 
-    if not (os.path.isfile(need1) and os.path.isfile(need2)):
+    while not (os.path.isfile(need1) and os.path.isfile(need2)):
+        ### 
+        # method 1 : 重啟整支程式
+        # print("❌ 缺少影片，重新啟動整支 Python 程式")
+        # restart_python_program()
+        ###
+        # method 2 : 重新啟動 server.exe + 兩台 client
+        print("❌ 缺少 cam1.MP4 或 cam2.MP4，重新啟動 server.exe 和兩台 client")
+
+        restart_server_and_clients()
         proc.stdin.write("download\n")
         proc.stdin.flush()
-        time.sleep(5) 
-        return "cam1/cam2 尚未齊全，停止本次流程"
+        time.sleep(12) 
+        subdirs = [d for d in os.listdir("data") if os.path.isdir(os.path.join("data", d))]
+        latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
+        
+        folder = os.path.join("data", latest_folder_name)
+        need1 = os.path.join(folder, "cam1.MP4")
+        need2 = os.path.join(folder, "cam2.MP4")
     #####
     
     if(len(subdirs) == 1): 
@@ -274,8 +413,8 @@ def start_reording():
     ### 此為假定，待修正
     video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
     video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
-    keep_second_half(video_path9920)
-    keep_second_half(video_path6808)
+    # keep_second_half(video_path9920)
+    # keep_second_half(video_path6808)
     #########################################################
 
     fig = plt.figure(figsize=(8, 6))
@@ -323,7 +462,7 @@ def start_reording():
     cv2.destroyAllWindows()
     zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
     print(f"zyz_angles_deg : {zyz_angles_deg}")
-    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]))
+    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]), ser)
     time.sleep(5)
 ################################################################################
     if key == ord('c'):
@@ -359,6 +498,7 @@ def start_reording():
         # ballY=[-10.133333333333333, 4.2
         # 66666666666667, -22.866666666666667]
         if(len(ballX) == 1):
+            # trigger_redlight_launcher(True, "COM5")
             trigger_redlight_launcher(True)
             print("!!")
             # plc = pymcprotocol.Type3E()
@@ -386,8 +526,8 @@ def start_reording():
             No9_coor = (40, 50)
             No7_coor = (0, 50)
 
-            dx = No3_coor[0] - (sum(ballX) / len(ballX))
-            dy = No3_coor[1] - (sum(ballY) / len(ballY))
+            dx = No7_coor[0] - (sum(ballX) / len(ballX))
+            dy = No7_coor[1] - (sum(ballY) / len(ballY))
 
             ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊c移(assume馬達往右、上為正) ###
             KpX = 6
@@ -410,6 +550,7 @@ def start_reording():
 
             # trigger_redlight_launcher(True)
     else:
+        # trigger_redlight_launcher(True, "COM5")
         trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
 
@@ -476,11 +617,13 @@ if __name__ == '__main__':
     cv2.destroyAllWindows()
     zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
     print(f"zyz_angles_deg : {zyz_angles_deg}")
-    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]))
+    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]), ser)
     time.sleep(5)
    ######################################################################### 
+    # trigger_redlight_launcher(True, "COM5")
     trigger_redlight_launcher(True)
     print("start to monitor http")
-    app.run(host='0.0.0.0', port=5000)
+    # app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, threaded=False)
 
     
