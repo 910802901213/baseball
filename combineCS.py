@@ -43,7 +43,6 @@ import serial
 
 # plc = pymcprotocol.Type3E()
 # plc.connect("192.168.50.18", 5001)
-esp_redlight_ip = "192.168.50.88"  # 紅綠燈控制裝置
 esp8266_ip = "192.168.50.90"
 esp_beamMotor_ip = "192.168.50.13"  # beamMotor
 
@@ -58,74 +57,28 @@ def send_speed_to_esp8266(speed):
     except Exception as e:
         print(f"❌ 傳送失敗：{e}")
 
-# === 紅綠燈控制函式 ===
-def trigger_redlight_launcher(on=True):
-    path = "/m100on" if on else "/m100off"
-    try:
-        r = requests.get(
-            f"http://{esp_redlight_ip}{path}",
-            timeout=(3, 5),
-            headers={"Connection": "close"}
-        )
 
-        if r.status_code == 200:
-            print(f"✅ 紅綠燈已 {'啟動' if on else '關閉'}")
-        else:
-            print(f"⚠️ 紅綠燈控制失敗，HTTP 狀態碼: {r.status_code}, text={repr(r.text)}")
 
-    except Exception as e:
-        print(f"❌ 紅綠燈控制錯誤：{type(e).__name__}: {repr(e)}")
-
-baud_rate = 9600
-# def trigger_redlight_launcher(on=True, port="COM1"):
-#     cmd = "1\n" if on else "0\n"
-
-#     try:
-#         with serial.Serial(port, baud_rate, timeout=2) as ser:
-#             time.sleep(2)  # Arduino reset 後等它穩定
-#             ser.write(cmd.encode("utf-8"))
-#             ser.flush()
-
-#             response = ser.readline().decode("utf-8", errors="ignore").strip()
-#             print(f"Arduino 回覆: {response}")
-#     except Exception as e:
-#         print(f"❌ 序列通訊錯誤: {type(e).__name__}: {e}")
-######
-# 無線
-# def trigger_beam_motor(data):
-#     # data type should be np.array
-#     path = ",".join(data.astype(str).tolist())  # make array to string
-#     print("path: ", path)
-#     while(True):
-#         try:
-#             # 確保在 IP 和 path 之間加上斜線 /
-#             r = requests.get(f"http://{esp_beamMotor_ip}/{path}", timeout=10)
-#             if r.status_code == 200:
-#                 print(f"✅ beamMotor已啟動")
-#                 break
-#             else:
-#                 print(f"⚠️ beamMotor控制失敗，HTTP 狀態碼: {r.status_code}")
-#         except Exception as e:
-#             print(f"❌ beamMotor控制錯誤:{e}") 
+baud_rate = 9600 
 ######
 
 ######
 # 有線
-ser = serial.Serial("COM15", baud_rate, timeout=10)
-time.sleep(2)  # 只在一開始等一次
-def trigger_beam_motor(data, ser):
-    path = ",".join(data.astype(str).tolist())
-    print("path:", path)
+# ser = serial.Serial("COM15", baud_rate, timeout=10)
+# time.sleep(2)  # 只在一開始等一次
+# def trigger_beam_motor(data, ser):
+#     path = ",".join(data.astype(str).tolist())
+#     print("path:", path)
 
-    try:
-        ser.write((path + "\n").encode("utf-8"))
-        ser.flush()
+#     try:
+#         ser.write((path + "\n").encode("utf-8"))
+#         ser.flush()
 
-        response = ser.readline().decode("utf-8", errors="ignore").strip()
-        print(f"Arduino 回覆: {response}")
+#         response = ser.readline().decode("utf-8", errors="ignore").strip()
+#         print(f"Arduino 回覆: {response}")
 
-    except Exception as e:
-        print(f"❌ beamMotor控制錯誤: {type(e).__name__}: {e}")
+#     except Exception as e:
+#         print(f"❌ beamMotor控制錯誤: {type(e).__name__}: {e}")
 ######
 
 def XYZ2YZ(rx, ry, rz): # rx, ry, rz (deg)
@@ -196,7 +149,7 @@ def keep_second_half(video_path):
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
     total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
-    half_frame = int(total_frames * 0.65) 
+    half_frame = int(total_frames * 0.7) 
 
     # 跳到一半
     cap.set(cv2.CAP_PROP_POS_FRAMES, half_frame)
@@ -376,6 +329,7 @@ def start_reording():
         ballY = []
         speed = []
 
+    time.sleep(0.7)
     proc.stdin.write("record\n")
     proc.stdin.flush()
 
@@ -482,40 +436,6 @@ def start_reording():
     
     # key = msvcrt.getch()
 ################################################################################
-    compared = photoshop.photoshop() 
-    # compared = str("C:\\Users\\samuel901213\\Downloads\\S__41328728.jpg")
-
-    # 開啟圖片
-    img = Image.open(compared)
-
-    # 取得原始尺寸
-    width, height = img.size
-
-    # 計算 1/6 大小
-    new_width = width // 1
-    new_height = height // 1
-
-    # 縮放並覆蓋存檔
-    # img.resize((new_width, new_height)).save(compared)
-    resized_img = img.resize((new_width, new_height))
-    resized_img.save(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
-    compared = str(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
-
-    # compared = r"C:\Users\samuel901213\Downloads\fk\f12\beamcaptured_image.jpg"
-    _, similarityMax_imgpath = beamDetect.similarityMax(compared)
-    X_deg, Y_deg, Z_deg = get_deg_fromPATH(similarityMax_imgpath)
-    matchPath = Path(f"D:/render_10degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
-    print(matchPath)
-    # matchPath = Path(f"C:/Users/samuel901213/Downloads/beam/render_20degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
-    X_deg, Y_deg, Z_deg = int(X_deg), int(Y_deg), int(Z_deg)
-    img = cv2.imread(str(matchPath)) 
-    cv2.imshow('Match', img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
-    print(f"zyz_angles_deg : {zyz_angles_deg}")
-    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]), ser)
-    time.sleep(5)
 ################################################################################
     if key == ord('c'):
         ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
@@ -551,7 +471,6 @@ def start_reording():
         # 66666666666667, -22.866666666666667]
         if(len(ballX) == 1):
             # trigger_redlight_launcher(True, "COM5")
-            trigger_redlight_launcher(True)
             print("!!")
             # plc = pymcprotocol.Type3E()
             # plc.connect("192.168.50.18", 5001)
@@ -571,7 +490,7 @@ def start_reording():
             Kps = 0.5
             send_speed_to_esp8266(ds * Kps)
 
-            # 計算目標號位以及差值
+            # 計算目標號位以及差值            
             No1_coor = (10, 11) # 一號
             No2_coor = (30, 11)
             No3_coor = (50, 11)
@@ -582,8 +501,24 @@ def start_reording():
             No8_coor = (30, 54)
             No9_coor = (50, 54)
 
-            dx = No5_coor[0] - (sum(ballX) / len(ballX))
-            dy = No5_coor[1] - (sum(ballY) / len(ballY))
+            target = int(np.load(r"D:\GoProMocapSystem_Released\server\target.npy").item())
+            
+            target_coor_dict = {
+                1: No1_coor,
+                2: No2_coor,
+                3: No3_coor,
+                4: No4_coor,
+                5: No5_coor,
+                6: No6_coor,
+                7: No7_coor,
+                8: No8_coor,
+                9: No9_coor,
+            }
+
+            target_coor = target_coor_dict[target]
+
+            dx = target_coor[0] - (sum(ballX) / len(ballX))
+            dy = target_coor[1] - (sum(ballY) / len(ballY))
 
             ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊c移(assume馬達往右、上為正) ###
             KpX = 6
@@ -603,11 +538,9 @@ def start_reording():
             os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
             os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
             os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
+            os.remove(r"D:\GoProMocapSystem_Released\server\target.npy")
 
             # trigger_redlight_launcher(True)
-    else:
-        # trigger_redlight_launcher(True, "COM5")
-        trigger_redlight_launcher(True)
     return "yellow on start to record!!!!"
 
 def ssh_run_command(host, port, user, password, command):
@@ -640,44 +573,7 @@ if __name__ == '__main__':
     time.sleep(5)
     ssh_run_command('192.168.50.12', 22, 'vince', 'Qwe70504', 'bash run_client.sh')
     time.sleep(15)
-########################################################################
-    compared = photoshop.photoshop() 
-    # compared = str("C:\\Users\\samuel901213\\Downloads\\S__41328728.jpg")
-
-    # 開啟圖片
-    img = Image.open(compared)
-
-    # 取得原始尺寸
-    width, height = img.size
-
-    # 計算 1/6 大小
-    new_width = width // 1
-    new_height = height // 1
-
-    # 縮放並覆蓋存檔
-    # img.resize((new_width, new_height)).save(compared)
-    resized_img = img.resize((new_width, new_height))
-    resized_img.save(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
-    compared = str(r"C:\\Users\\samuel901213\\Downloads\\resized.jpg")
-
-    # compared = r"C:\Users\samuel901213\Downloads\fk\f12\beamcaptured_image.jpg"
-    _, similarityMax_imgpath = beamDetect.similarityMax(compared)
-    X_deg, Y_deg, Z_deg = get_deg_fromPATH(similarityMax_imgpath)
-    matchPath = Path(f"D:/render_10degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
-    print(matchPath)
-    # matchPath = Path(f"C:/Users/samuel901213/Downloads/beam/render_20degree/worldX{X_deg}Y{Y_deg}Z{Z_deg}.png")
-    X_deg, Y_deg, Z_deg = int(X_deg), int(Y_deg), int(Z_deg)
-    img = cv2.imread(str(matchPath)) 
-    cv2.imshow('Match', img)
-    cv2.waitKey(0)
-    cv2.destroyAllWindows()
-    zyz_angles_deg = XYZ2YZ(-X_deg, -Y_deg, -Z_deg) # rad
-    print(f"zyz_angles_deg : {zyz_angles_deg}")
-    trigger_beam_motor(np.array([int(zyz_angles_deg[0]), int(zyz_angles_deg[1]), int(zyz_angles_deg[2]), -1]), ser)
-    time.sleep(5)
-   ######################################################################### 
-    # trigger_redlight_launcher(True, "COM5")
-    trigger_redlight_launcher(True)
+    
     print("start to monitor http")
     # app.run(host='0.0.0.0', port=5000)
     app.run(host='0.0.0.0', port=5000, threaded=False)

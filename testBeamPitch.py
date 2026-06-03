@@ -47,13 +47,20 @@ esp_beamMotor_ip = "192.168.50.13"  # beamMotor
 def trigger_redlight_launcher(on=True):
     path = "/m100on" if on else "/m100off"
     try:
-        r = requests.get(f"http://{esp_redlight_ip}{path}", timeout=10)
+        r = requests.get(
+            f"http://{esp_redlight_ip}{path}",
+            timeout=(3, 5),
+            headers={"Connection": "close"}
+        )
+
         if r.status_code == 200:
             print(f"✅ 紅綠燈已 {'啟動' if on else '關閉'}")
         else:
-            print(f"⚠️ 紅綠燈控制失敗，HTTP 狀態碼: {r.status_code}")
+            print(f"⚠️ 紅綠燈控制失敗，HTTP 狀態碼: {r.status_code}, text={repr(r.text)}")
+
     except Exception as e:
-        print(f"❌ 紅綠燈控制錯誤：{e}")
+        print(f"❌ 紅綠燈控制錯誤：{type(e).__name__}: {repr(e)}")
+
 
 baud_rate = 9600
 # def trigger_redlight_launcher(on=True, port="COM1"):
