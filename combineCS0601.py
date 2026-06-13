@@ -347,233 +347,246 @@ if __name__ == '__main__':
     time.sleep(15)
 
     while True:
-        r = requests.get("http://127.0.0.1:8000/api/read-redlight-serial")
-        data = r.json()
-        msg = data.get("message")        
+        try:
+            r = requests.get(
+                "http://127.0.0.1:8000/api/read-redlight-serial",
+                timeout=2
+            )
+            data = r.json()
+            msg = data.get("message")
+            r.close()
 
-        if msg:
-            print("收到 Arduino 訊息:", msg)
-            if os.path.isfile(r"D:\GoProMocapSystem_Released\server\ballX.npy") and os.path.isfile(r"D:\GoProMocapSystem_Released\server\ballY.npy"):
-                print("檔案 ballX.npy ballY.npy存在!")
-                ballX = list(np.load(r"D:\GoProMocapSystem_Released\server\ballX.npy"))
-                ballY = list(np.load(r"D:\GoProMocapSystem_Released\server\ballY.npy"))     
-                speed = list(np.load(r"D:\GoProMocapSystem_Released\server\speed.npy"))   
-            else:
-                print("檔案 ballX.npy ballY.npy 不存在！")
-                ballX = []
-                ballY = []
-                speed = []
+        except Exception as e:
+            print(f"❌ read-redlight-serial 失敗: {e}")
+            time.sleep(1)
+            continue
 
-            time.sleep(0.7)
-            proc.stdin.write("record\n")
-            proc.stdin.flush()
+        if not msg:
+            time.sleep(0.05)
+            continue
 
-            time.sleep(3)
-            proc.stdin.write("record\n")
-            proc.stdin.flush()
-            time.sleep(2.5)
+        print("收到 Arduino 訊息:", msg)        
+
+        if os.path.isfile(r"D:\GoProMocapSystem_Released\server\ballX.npy") and os.path.isfile(r"D:\GoProMocapSystem_Released\server\ballY.npy"):
+            print("檔案 ballX.npy ballY.npy存在!")
+            ballX = list(np.load(r"D:\GoProMocapSystem_Released\server\ballX.npy"))
+            ballY = list(np.load(r"D:\GoProMocapSystem_Released\server\ballY.npy"))     
+            speed = list(np.load(r"D:\GoProMocapSystem_Released\server\speed.npy"))   
+        else:
+            print("檔案 ballX.npy ballY.npy 不存在！")
+            ballX = []
+            ballY = []
+            speed = []
+
+        proc.stdin.write("record\n")
+        proc.stdin.flush()
+
+        time.sleep(3)
+        proc.stdin.write("record\n")
+        proc.stdin.flush()
+        time.sleep(2.5)
+        proc.stdin.write("download\n")
+        proc.stdin.flush()
+        # time.sleep(12) 
+        time.sleep(3) 
+
+        # proc.terminate()
+        # proc.wait()
+        # stop_event.set()  # 發送停止信號
+        # thread_read_output.join()
+
+        # print("已停止\n")
+
+        # find if there is only one file in "data" folder
+        subdirs = [d for d in os.listdir("data") if os.path.isdir(os.path.join("data", d))] 
+        print(subdirs)
+
+        latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
+
+        #####
+        # make sure that there are two essential files 'cam1.mp4' and 'cam2.mp4'
+        folder = os.path.join("data", latest_folder_name)
+
+        need1 = os.path.join(folder, "cam1.MP4")
+        need2 = os.path.join(folder, "cam2.MP4")
+
+        ok1 = wait_for_file_stable(need1, stable_time=3, timeout=20)
+        ok2 = wait_for_file_stable(need2, stable_time=3, timeout=20)
+
+        if not (ok1 and ok2):
+            print("❌ cam1 或 cam2 沒有成功下載完成")
+
+        while not (os.path.isfile(need1) and os.path.isfile(need2)):
+            ### 
+            # method 1 : 重啟整支程式
+            # print("❌ 缺少影片，重新啟動整支 Python 程式")
+            # restart_python_program()
+            ###
+            # method 2 : 重新啟動 server.exe + 兩台 client
+            print("❌ 缺少 cam1.MP4 或 cam2.MP4，重新啟動 server.exe 和兩台 client")
+
+            restart_server_and_clients()
             proc.stdin.write("download\n")
             proc.stdin.flush()
-            # time.sleep(12) 
             time.sleep(3) 
-
-            # proc.terminate()
-            # proc.wait()
-            # stop_event.set()  # 發送停止信號
-            # thread_read_output.join()
-
-            # print("已停止\n")
-
-            # find if there is only one file in "data" folder
-            subdirs = [d for d in os.listdir("data") if os.path.isdir(os.path.join("data", d))] 
-            print(subdirs)
-
+            subdirs = [d for d in os.listdir("data") if os.path.isdir(os.path.join("data", d))]
             latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
-
-            #####
-            # make sure that there are two essential files 'cam1.mp4' and 'cam2.mp4'
+            
             folder = os.path.join("data", latest_folder_name)
-
             need1 = os.path.join(folder, "cam1.MP4")
             need2 = os.path.join(folder, "cam2.MP4")
-
             ok1 = wait_for_file_stable(need1, stable_time=3, timeout=20)
             ok2 = wait_for_file_stable(need2, stable_time=3, timeout=20)
 
             if not (ok1 and ok2):
                 print("❌ cam1 或 cam2 沒有成功下載完成")
-
-            while not (os.path.isfile(need1) and os.path.isfile(need2)):
-                ### 
-                # method 1 : 重啟整支程式
-                # print("❌ 缺少影片，重新啟動整支 Python 程式")
-                # restart_python_program()
-                ###
-                # method 2 : 重新啟動 server.exe + 兩台 client
-                print("❌ 缺少 cam1.MP4 或 cam2.MP4，重新啟動 server.exe 和兩台 client")
-
-                restart_server_and_clients()
-                proc.stdin.write("download\n")
-                proc.stdin.flush()
-                time.sleep(3) 
-                subdirs = [d for d in os.listdir("data") if os.path.isdir(os.path.join("data", d))]
-                latest_folder_name = get_latest_folder_by_ctime("D:\\GoProMocapSystem_Released\\server\\data")
-                
-                folder = os.path.join("data", latest_folder_name)
-                need1 = os.path.join(folder, "cam1.MP4")
-                need2 = os.path.join(folder, "cam2.MP4")
-                ok1 = wait_for_file_stable(need1, stable_time=3, timeout=20)
-                ok2 = wait_for_file_stable(need2, stable_time=3, timeout=20)
-
-                if not (ok1 and ok2):
-                    print("❌ cam1 或 cam2 沒有成功下載完成")
-            #####
-            
-            if(len(subdirs) == 1): 
-                print("只有一個資料夾")        
-                cap9920 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam1.MP4"))
-                cap6808 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam2.MP4"))
-                ret9920, frame9920 = cap9920.read()
-                ret6808, frame6808 = cap6808.read()
-                cap9920.release()
-                cap6808.release()
-                calibrate("9920", frame9920)
-                calibrate("6808", frame6808)
-
-            # if(True):         
-            #     cap9920 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam1.MP4"))
-            #     cap6808 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam2.MP4"))
-            #     ret9920, frame9920 = cap9920.read()
-            #     ret6808, frame6808 = cap6808.read()
-            #     cap9920.release()
-            #     cap6808.release()
-            #     calibrate("9920", frame9920)
-            #     calibrate("6808", frame6808)
-
-            #########################################################
-            ### 此為假定，待修正
-            video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
-            video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
-            # keep_second_half(video_path9920)
-            # keep_second_half(video_path6808)
-            #########################################################
-
-            fig = plt.figure(figsize=(8, 6))
-            ax = fig.add_subplot(111, projection='3d')
-            print("kzone預備")
-            kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
-            print("kzone結束")
-            worlds, speedAvg = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
+        #####
         
-            plt.savefig("output.png")   # 存成圖檔
-            plt.close()
-            intersectionWorld_arrive_noOffset, intersectionWorld_arrive, centerCross2D, key  = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
+        if(len(subdirs) == 1): 
+            print("只有一個資料夾")        
+            cap9920 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam1.MP4"))
+            cap6808 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam2.MP4"))
+            ret9920, frame9920 = cap9920.read()
+            ret6808, frame6808 = cap6808.read()
+            cap9920.release()
+            cap6808.release()
+            calibrate("9920", frame9920)
+            calibrate("6808", frame6808)
+
+        # if(True):         
+        #     cap9920 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam1.MP4"))
+        #     cap6808 = cv2.VideoCapture(os.path.join("data", latest_folder_name, "cam2.MP4"))
+        #     ret9920, frame9920 = cap9920.read()
+        #     ret6808, frame6808 = cap6808.read()
+        #     cap9920.release()
+        #     cap6808.release()
+        #     calibrate("9920", frame9920)
+        #     calibrate("6808", frame6808)
+
+        #########################################################
+        ### 此為假定，待修正
+        video_path9920 = os.path.join("data", latest_folder_name, "cam1.MP4")
+        video_path6808 = os.path.join("data", latest_folder_name, "cam2.MP4")
+        # keep_second_half(video_path9920)
+        # keep_second_half(video_path6808)
+        #########################################################
+
+        fig = plt.figure(figsize=(8, 6))
+        ax = fig.add_subplot(111, projection='3d')
+        print("kzone預備")
+        kzone2DPoints, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag, sideViewPoints, corner, bottomViewPoints, cornerPixel = board.find_kzone(video_path9920, video_path6808, ax)
+        print("kzone結束")
+        worlds, speedAvg = baseball3D.baseball3D(video_path9920, video_path6808, cornerPixel, ax)
+    
+        plt.savefig("output.png")   # 存成圖檔
+        plt.close()
+        intersectionWorld_arrive_noOffset, intersectionWorld_arrive, centerCross2D, key  = board.kzone2D_visualize(kzone2DPoints, worlds, kzone2D_topEdge_mag, kzone2D_rightEdge_mag, kzone2D_bottomEdge_mag , kzone2D_leftEdge_mag)
+        
+        # key = msvcrt.getch()
+    ################################################################################
+    ################################################################################
+        if key == ord('c'):
+            ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
+            ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
+            speed.append(speedAvg)
+
+            print("BallX.npy 內容", ballX)   
+            print("BallY.npy 內容", ballY)
+            print("speed.npy 內容", speed)
+
+            plc = pymcprotocol.Type3E()
+            plc.connect("192.168.50.18", 5001)
+
+            # read the xy position of motor
+            dataX = plc.batchread_wordunits("SD5502", 1)
+            motorX_params = dataX[0]
+            dataY = plc.batchread_wordunits("SD5542", 1)
+            motorY_params = dataY[0]
+
+            log_value(centerCross2D[0], centerCross2D[1], motorX_params, motorY_params, speedAvg, "data_log.csv", latest_folder_name)
+
+            np.save(r"D:\GoProMocapSystem_Released\server\ballX.npy", ballX)
+            np.save(r"D:\GoProMocapSystem_Released\server\ballY.npy", ballY)
+            np.save(r"D:\GoProMocapSystem_Released\server\speed.npy", speed)
+
+            ax.set_xlabel('X')
+            ax.set_ylabel('Y')
+            ax.set_zlabel('Z')
+            ax.set_title('3D Scatter Plot')
+            # ballX=[42.06666666666667, 73.86666666666666, 74.06666666666666]
             
-            # key = msvcrt.getch()
-        ################################################################################
-        ################################################################################
-            if key == ord('c'):
-                ballX.append(centerCross2D[0]) # 紀錄當前進壘點位置
-                ballY.append(centerCross2D[1]) # 紀錄當前進壘點位置
-                speed.append(speedAvg)
+            # ballY=[-10.133333333333333, 4.2
+            # 66666666666667, -22.866666666666667]
+            if(len(ballX) == 1):
+                # trigger_redlight_launcher(True, "COM5")
+                print("!!")
+                # plc = pymcprotocol.Type3E()
+                # plc.connect("192.168.50.18", 5001)
 
-                print("BallX.npy 內容", ballX)   
-                print("BallY.npy 內容", ballY)
-                print("speed.npy 內容", speed)
+                # # read the xy position of motor
+                # dataX = plc.batchread_wordunits("SD5502", 1)
+                # motorX_params = dataX[0]
+                # dataY = plc.batchread_wordunits("SD5542", 1)
+                # motorY_params = dataY[0]
 
-                plc = pymcprotocol.Type3E()
-                plc.connect("192.168.50.18", 5001)
-
-                # read the xy position of motor
-                dataX = plc.batchread_wordunits("SD5502", 1)
-                motorX_params = dataX[0]
-                dataY = plc.batchread_wordunits("SD5542", 1)
-                motorY_params = dataY[0]
-
-                log_value(centerCross2D[0], centerCross2D[1], motorX_params, motorY_params, speedAvg, "data_log.csv", latest_folder_name)
-
-                np.save(r"D:\GoProMocapSystem_Released\server\ballX.npy", ballX)
-                np.save(r"D:\GoProMocapSystem_Released\server\ballY.npy", ballY)
-                np.save(r"D:\GoProMocapSystem_Released\server\speed.npy", speed)
-
-                ax.set_xlabel('X')
-                ax.set_ylabel('Y')
-                ax.set_zlabel('Z')
-                ax.set_title('3D Scatter Plot')
-                # ballX=[42.06666666666667, 73.86666666666666, 74.06666666666666]
+                # print("motorX_params: ", motorX_params)
+                # print("motorY_params: ", motorY_params)
                 
-                # ballY=[-10.133333333333333, 4.2
-                # 66666666666667, -22.866666666666667]
-                if(len(ballX) == 1):
-                    # trigger_redlight_launcher(True, "COM5")
-                    print("!!")
-                    # plc = pymcprotocol.Type3E()
-                    # plc.connect("192.168.50.18", 5001)
+                # 速度修正
+                targetSpeed = 100
+                ds = targetSpeed - (sum(speed) / len(speed))
+                Kps = 0.5
+                send_speed_to_esp8266(ds * Kps)
 
-                    # # read the xy position of motor
-                    # dataX = plc.batchread_wordunits("SD5502", 1)
-                    # motorX_params = dataX[0]
-                    # dataY = plc.batchread_wordunits("SD5542", 1)
-                    # motorY_params = dataY[0]
+                # 計算目標號位以及差值            
+                No1_coor = (10, 11) # 一號
+                No2_coor = (30, 11)
+                No3_coor = (50, 11)
+                No4_coor = (10, 32.5)
+                No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2) # 五號
+                No6_coor = (50, 32.5)   
+                No7_coor = (10, 54)
+                No8_coor = (30, 54)
+                No9_coor = (50, 54)
 
-                    # print("motorX_params: ", motorX_params)
-                    # print("motorY_params: ", motorY_params)
-                    
-                    # 速度修正
-                    targetSpeed = 100
-                    ds = targetSpeed - (sum(speed) / len(speed))
-                    Kps = 0.5
-                    send_speed_to_esp8266(ds * Kps)
+                target = int(np.load(r"D:\GoProMocapSystem_Released\server\target.npy").item())
+                
+                target_coor_dict = {
+                    1: No1_coor,
+                    2: No2_coor,
+                    3: No3_coor,
+                    4: No4_coor,
+                    5: No5_coor,
+                    6: No6_coor,
+                    7: No7_coor,
+                    8: No8_coor,
+                    9: No9_coor,
+                }
 
-                    # 計算目標號位以及差值            
-                    No1_coor = (10, 11) # 一號
-                    No2_coor = (30, 11)
-                    No3_coor = (50, 11)
-                    No4_coor = (10, 32.5)
-                    No5_coor = (kzone2D_topEdge_mag / 2, kzone2D_rightEdge_mag / 2) # 五號
-                    No6_coor = (50, 32.5)   
-                    No7_coor = (10, 54)
-                    No8_coor = (30, 54)
-                    No9_coor = (50, 54)
+                target_coor = target_coor_dict[target]
 
-                    target = int(np.load(r"D:\GoProMocapSystem_Released\server\target.npy").item())
-                    
-                    target_coor_dict = {
-                        1: No1_coor,
-                        2: No2_coor,
-                        3: No3_coor,
-                        4: No4_coor,
-                        5: No5_coor,
-                        6: No6_coor,
-                        7: No7_coor,
-                        8: No8_coor,
-                        9: No9_coor,
-                    }
+                dx = target_coor[0] - (sum(ballX) / len(ballX))
+                dy = target_coor[1] - (sum(ballY) / len(ballY))
 
-                    target_coor = target_coor_dict[target]
+                ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊c移(assume馬達往右、上為正) ###
+                KpX = 6
+                KpY = 1.5
+                motorX_params = motorX_params + KpX * dx
+                motorY_params = motorY_params - KpY * dy
 
-                    dx = target_coor[0] - (sum(ballX) / len(ballX))
-                    dy = target_coor[1] - (sum(ballY) / len(ballY))
+                # write the new value to PLC
+                plc.batchwrite_wordunits("D102", [int(motorX_params)])
+                plc.batchwrite_wordunits("D202", [int(motorY_params)])
 
-                    ### assume 打在右下角 dx = -10, dy = -15 -> 馬達要往左邊c移(assume馬達往右、上為正) ###
-                    KpX = 6
-                    KpY = 1.5
-                    motorX_params = motorX_params + KpX * dx
-                    motorY_params = motorY_params - KpY * dy
-
-                    # write the new value to PLC
-                    plc.batchwrite_wordunits("D102", [int(motorX_params)])
-                    plc.batchwrite_wordunits("D202", [int(motorY_params)])
-
-                    # 馬達點位調整
-                    plc.batchwrite_bitunits("M700", [1])
-                    time.sleep(1)  # 給 PLC 足夠掃描時間
-                    plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
-                    time.sleep(1)
-                    os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
-                    os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
-                    os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
-                    os.remove(r"D:\GoProMocapSystem_Released\server\target.npy")
+                # 馬達點位調整
+                plc.batchwrite_bitunits("M700", [1])
+                time.sleep(1)  # 給 PLC 足夠掃描時間
+                plc.batchwrite_bitunits("M700", [0])  # 再寫回 0，避免卡住
+                time.sleep(1)
+                os.remove(r"D:\GoProMocapSystem_Released\server\ballX.npy")
+                os.remove(r"D:\GoProMocapSystem_Released\server\ballY.npy")
+                os.remove(r"D:\GoProMocapSystem_Released\server\speed.npy")
+                os.remove(r"D:\GoProMocapSystem_Released\server\target.npy")
 
 
     
